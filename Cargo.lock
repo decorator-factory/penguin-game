@@ -123,6 +123,7 @@ checksum = "117240f60069e65410b3ae1bb213295bd828f707b5bec6596a1afc8793ce0cbc"
 name = "ducky-game"
 version = "0.1.0"
 dependencies = [
+ "arrayvec",
  "glam 0.27.0",
  "macroquad",
  "nalgebra",

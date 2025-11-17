@@ -3,8 +3,13 @@ name = "ducky-game"
 version = "0.1.0"
 edition = "2024"
 
+[profile.release]
+lto = "fat"
+codegen-units = 1
+
 [dependencies]
 glam = "0.27"
 nalgebra = "0.34"
+arrayvec = "0.7"
 macroquad = { version = "0.4.14", features = ["audio"] }
 parry2d = "0.25.3"
