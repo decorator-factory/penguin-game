@@ -120,17 +120,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117240f60069e65410b3ae1bb213295bd828f707b5bec6596a1afc8793ce0cbc"
 
 [[package]]
-name = "ducky-game"
-version = "0.1.0"
-dependencies = [
- "arrayvec",
- "glam 0.27.0",
- "macroquad",
- "nalgebra",
- "parry2d",
-]
-
-[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -591,6 +580,17 @@ name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+
+[[package]]
+name = "penguin-game"
+version = "0.1.0"
+dependencies = [
+ "arrayvec",
+ "glam 0.27.0",
+ "macroquad",
+ "nalgebra",
+ "parry2d",
+]
 
 [[package]]
 name = "png"

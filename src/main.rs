@@ -10,7 +10,7 @@ const SCREEN_SIZE: Vec2 = vec2(WINDOW_WIDTH as f32, WINDOW_HEIGHT as f32);
 const UPDATES_PER_SECOND: f64 = 120.;
 const UPDATE_FRAME_TIME: f64 = 1. / UPDATES_PER_SECOND;
 
-const DUCKY_RADIUS: f32 = 24.0;
+const PENGUIN_RADIUS: f32 = 24.0;
 const ROCKET_RADIUS: f32 = 4.0;
 
 const ROCKET_SPEED: f32 = 5.0;
@@ -35,7 +35,7 @@ const WALK_ACCEL_AIR: f32 = 0.05;
 
 fn window_conf() -> Conf {
     Conf {
-        window_title: "ducky".to_string(),
+        window_title: "penguin".to_string(),
         window_width: WINDOW_WIDTH as i32,
         window_height: WINDOW_HEIGHT as i32,
         window_resizable: false,
@@ -73,7 +73,7 @@ struct Level {
 }
 
 struct GameState {
-    ducky: Ducky,
+    penguin: Ducky,
     level: Level,
     rockets: Vec<Rocket>,
     explosions: Vec<Explosion>,
@@ -89,7 +89,7 @@ fn viewport_offset_to_camera(offset: Vec2) -> Camera2D {
 }
 
 fn init_game_state() -> GameState {
-    let ducky =
+    let penguin =
         Ducky { pos: vec2(100., 100.), vel: Vec2::ZERO, coyote_time: 0, rocket_cooldown: 0 };
 
     #[rustfmt::skip]
@@ -112,7 +112,7 @@ fn init_game_state() -> GameState {
     ].map(|(x, y, w, h)| Rect::new(x * 32., y * 32., w * 32., h * 32.)).to_vec();
 
     GameState {
-        ducky,
+        penguin,
         level: Level { rects },
         rockets: Vec::with_capacity(32),
         explosions: Vec::with_capacity(32),
@@ -134,6 +134,7 @@ async fn main() {
         // Mouse input
         let (screen_mx, screen_my) = mouse_position();
         let mouse_pos = vec2(screen_mx, screen_my) + viewport_offset;
+        let angle_to_mouse = (mouse_pos - state.penguin.pos).normalize_or(vec2(1.0, 0.0));
 
         // Frame debt logic
         let now = get_time();
@@ -144,7 +145,7 @@ async fn main() {
             fixed_update(&mut state, mouse_pos);
             time_bank -= UPDATE_FRAME_TIME;
         }
-        viewport_offset = state.ducky.pos - SCREEN_SIZE / 2.;
+        viewport_offset = state.penguin.pos - SCREEN_SIZE / 2.;
 
         // Main rendering
         set_camera(&viewport_offset_to_camera(viewport_offset));
@@ -152,7 +153,7 @@ async fn main() {
         for &Rect { x, y, w, h } in &state.level.rects {
             draw_rectangle(x, y, w, h, GRAY);
         }
-        draw_ducky(state.ducky.pos, state.ducky.vel);
+        draw_penguin(state.penguin.pos, state.penguin.vel, angle_to_mouse);
         for &rocket in &state.rockets {
             draw_rocket(rocket.pos, rocket.vel);
         }
@@ -170,15 +171,15 @@ async fn main() {
 fn fixed_update(state: &mut GameState, mouse_pos: Vec2) {
     update_rockets_movement(&mut state.rockets, &mut state.explosions, &state.level.rects);
     update_explosions(&mut state.explosions);
-    update_ducky_movement(&mut state.ducky, &state.level.rects, &state.explosions);
+    update_penguin_movement(&mut state.penguin, &state.level.rects, &state.explosions);
 
-    state.ducky.rocket_cooldown = state.ducky.rocket_cooldown.saturating_sub(1);
+    state.penguin.rocket_cooldown = state.penguin.rocket_cooldown.saturating_sub(1);
     // Spawn rocket
-    if is_mouse_button_down(MouseButton::Left) && state.ducky.rocket_cooldown == 0 {
-        state.ducky.rocket_cooldown = ROCKET_SHOOT_COOLDOWN;
-        let dir = (mouse_pos - state.ducky.pos).normalize_or(vec2(1., 0.));
+    if is_mouse_button_down(MouseButton::Left) && state.penguin.rocket_cooldown == 0 {
+        state.penguin.rocket_cooldown = ROCKET_SHOOT_COOLDOWN;
+        let dir = (mouse_pos - state.penguin.pos).normalize_or(vec2(1., 0.));
         state.rockets.push(Rocket {
-            pos: state.ducky.pos,
+            pos: state.penguin.pos,
             vel: dir * ROCKET_SPEED,
             ttl: ROCKET_TTL,
         });
@@ -186,66 +187,62 @@ fn fixed_update(state: &mut GameState, mouse_pos: Vec2) {
 
     // Ensure that we're not grounded when we've already lifted off
     // otherwise you can normal-jump after you've rocket-jumped
-    if state.ducky.vel.y < -0.001 {
-        state.ducky.coyote_time = 0;
+    if state.penguin.vel.y < -0.001 {
+        state.penguin.coyote_time = 0;
     }
 }
 
-fn update_ducky_movement(
-    ducky: &mut Ducky,
-    rects: &[Rect],
-    explosions: &[Explosion],
-) {
-    let (accel, friction) = if ducky.coyote_time == 0 {
+fn update_penguin_movement(penguin: &mut Ducky, rects: &[Rect], explosions: &[Explosion]) {
+    let (accel, friction) = if penguin.coyote_time == 0 {
         (WALK_ACCEL_AIR, FRICTION_AIR)
     } else {
         (WALK_ACCEL_GROUND, FRICTION_GROUND)
     };
 
-    ducky.vel.x *= friction;
+    penguin.vel.x *= friction;
     if is_key_down(KeyCode::D) {
-        if ducky.vel.x + accel < MAX_WALK_SPEED {
-            ducky.vel.x += accel;
-        } else if ducky.vel.x < MAX_WALK_SPEED {
-            ducky.vel.x = MAX_WALK_SPEED;
+        if penguin.vel.x + accel < MAX_WALK_SPEED {
+            penguin.vel.x += accel;
+        } else if penguin.vel.x < MAX_WALK_SPEED {
+            penguin.vel.x = MAX_WALK_SPEED;
         }
     }
     if is_key_down(KeyCode::A) {
-        if ducky.vel.x - accel > -MAX_WALK_SPEED {
-            ducky.vel.x -= accel;
-        } else if ducky.vel.x > -MAX_WALK_SPEED {
-            ducky.vel.x = -MAX_WALK_SPEED;
+        if penguin.vel.x - accel > -MAX_WALK_SPEED {
+            penguin.vel.x -= accel;
+        } else if penguin.vel.x > -MAX_WALK_SPEED {
+            penguin.vel.x = -MAX_WALK_SPEED;
         }
     }
 
-    if ducky.coyote_time == COYOTE_DURATION {
-        ducky.vel.y = 0.;
+    if penguin.coyote_time == COYOTE_DURATION {
+        penguin.vel.y = 0.;
     }
-    if ducky.coyote_time == 0 && ducky.vel.y < MAX_GRAVITY_SPEED {
-        ducky.vel.y += GRAVITY;
+    if penguin.coyote_time == 0 && penguin.vel.y < MAX_GRAVITY_SPEED {
+        penguin.vel.y += GRAVITY;
     }
 
     // Jumping
-    if ducky.coyote_time > 0 && is_key_down(KeyCode::Space) {
-        ducky.coyote_time = 0;
-        ducky.vel += vec2(0., -JUMP_SPEED);
+    if penguin.coyote_time > 0 && is_key_down(KeyCode::Space) {
+        penguin.coyote_time = 0;
+        penguin.vel += vec2(0., -JUMP_SPEED);
     }
 
     // Ducky collision detection
     let mut is_grounded = false;
-    let ducky_circle = Circle::new(ducky.pos.x, ducky.pos.y, DUCKY_RADIUS);
+    let penguin_circle = Circle::new(penguin.pos.x, penguin.pos.y, PENGUIN_RADIUS);
     for rect in rects {
-        if let Some(dv) = circle_impacts_rect(ducky_circle.offset(ducky.vel), *rect) {
-            ducky.pos += dv / 2.;
+        if let Some(dv) = circle_impacts_rect(penguin_circle.offset(penguin.vel), *rect) {
+            penguin.pos += dv / 2.;
 
             if dv.length_squared() > 0.05 {
-                let cancel_vec = ducky.vel.project_onto_normalized(dv.normalize());
-                ducky.vel -= cancel_vec / 4.;
+                let cancel_vec = penguin.vel.project_onto_normalized(dv.normalize());
+                penguin.vel -= cancel_vec / 4.;
             }
 
             if !is_grounded
                 && let Some(dv_when_slightly_lower) =
-                    circle_impacts_rect(ducky_circle.offset(ducky.vel + vec2(0., 0.1)), *rect)
+                    circle_impacts_rect(penguin_circle.offset(penguin.vel + vec2(0., 0.1)), *rect)
             {
                 let angle = dv_when_slightly_lower.to_angle();
                 is_grounded = -PI / 2. - 0.1 < angle && angle < -PI / 2. + 0.1;
@@ -253,20 +250,20 @@ fn update_ducky_movement(
         }
     }
     if is_grounded {
-        ducky.coyote_time = COYOTE_DURATION;
+        penguin.coyote_time = COYOTE_DURATION;
     } else {
-        ducky.coyote_time = ducky.coyote_time.saturating_sub(1);
+        penguin.coyote_time = penguin.coyote_time.saturating_sub(1);
     }
 
-    let ducky_circle = Circle::new(ducky.pos.x, ducky.pos.y, DUCKY_RADIUS);
+    let penguin_circle = Circle::new(penguin.pos.x, penguin.pos.y, PENGUIN_RADIUS);
     for &exp in explosions {
         let exp_circle = Circle::new(exp.pos.x, exp.pos.y, exp.radius);
-        if let Some((dir, scale)) = ducky_impacts_explosion(ducky_circle, exp_circle) {
-            ducky.vel += dir * exp.force * scale;
+        if let Some((dir, scale)) = penguin_impacts_explosion(penguin_circle, exp_circle) {
+            penguin.vel += dir * exp.force * scale;
         }
     }
 
-    ducky.pos += ducky.vel
+    penguin.pos += penguin.vel
 }
 
 fn update_rockets_movement(
@@ -321,7 +318,7 @@ fn update_explosions(explosions: &mut Vec<Explosion>) {
     }
 
     for exp in explosions.iter_mut() {
-        exp.ttl = exp.ttl.wrapping_sub(1);  // if this wraps, then it will be removed anyway!
+        exp.ttl = exp.ttl.wrapping_sub(1); // if this wraps, then it will be removed anyway!
     }
 
     for &idx in removed_idxs.iter().rev() {
@@ -350,19 +347,19 @@ fn circle_impacts_rect(circle: Circle, rect: Rect) -> Option<Vec2> {
 }
 
 /// If an intersection occurs, returns a normal vector and how close
-/// the ducky was to the explosion center (1 is the closest, 0 is the farthest)
-fn ducky_impacts_explosion(ducky: Circle, exp: Circle) -> Option<(Vec2, f32)> {
+/// the penguin was to the explosion center (1 is the closest, 0 is the farthest)
+fn penguin_impacts_explosion(penguin: Circle, exp: Circle) -> Option<(Vec2, f32)> {
     use nalgebra::Isometry2;
     use parry2d::query;
     use parry2d::shape::Ball;
 
-    let ducky_ball = Ball::new(ducky.radius());
+    let penguin_ball = Ball::new(penguin.radius());
     let exp_ball = Ball::new(exp.radius());
 
-    let ducky_pos = Isometry2::translation(ducky.x, ducky.y);
+    let penguin_pos = Isometry2::translation(penguin.x, penguin.y);
     let exp_pos = Isometry2::translation(exp.x, exp.y);
 
-    let contact = query::contact(&ducky_pos, &ducky_ball, &exp_pos, &exp_ball, 0.0).unwrap();
+    let contact = query::contact(&penguin_pos, &penguin_ball, &exp_pos, &exp_ball, 0.0).unwrap();
     contact.map(|c| {
         let delta = c.point2 - c.point1;
         let vec = vec2(delta.x, delta.y);
@@ -394,7 +391,10 @@ fn draw_explosion(Explosion { pos, radius, ttl, initial_ttl, .. }: Explosion) {
     draw_circle(pos.x, pos.y, (radius - 1.) * (ttl as f32) / (initial_ttl as f32), WHITE);
 }
 
-fn draw_ducky(pos: Vec2, vel: Vec2) {
+const PENGUINGRAY: Color = Color::new(0.15, 0.15, 0.25, 1.0);
+
+fn draw_penguin(pos: Vec2, vel: Vec2, eyes_dir: Vec2) {
+    const RAD: f32 = PENGUIN_RADIUS;
     let (cx, cy) = (pos.x, pos.y);
 
     if vel.length() > 2.0 {
@@ -405,21 +405,28 @@ fn draw_ducky(pos: Vec2, vel: Vec2) {
             draw_circle_lines(
                 dpos.x,
                 dpos.y,
-                DUCKY_RADIUS * 0.5 + DUCKY_RADIUS * 0.4 * fade_factor,
+                RAD * 0.5 + RAD * 0.4 * fade_factor,
                 1.0,
-                WHITE.with_alpha(fade_factor * 0.5),
+                WHITE.with_alpha(fade_factor * 0.3),
             );
         }
     }
-    draw_circle(cx, cy, DUCKY_RADIUS, YELLOW);
+    draw_circle(cx, cy, RAD, PENGUINGRAY);
 
-    draw_circle(cx - DUCKY_RADIUS * 0.5, cy - DUCKY_RADIUS * 0.2, 2., BLACK);
-    draw_circle(cx + DUCKY_RADIUS * 0.5, cy - DUCKY_RADIUS * 0.2, 2., BLACK);
+    draw_ellipse(cx, cy + RAD * 0.4, RAD * 0.7, RAD * 0.4, 0.0, LIGHTGRAY);
+    draw_rectangle(cx - RAD * 0.6, cy - RAD * 0.2, RAD * 1.2, RAD * 0.4, PENGUINGRAY);
+
+    let [look_x, look_y] = (eyes_dir * RAD * 0.07).to_array();
+
+    draw_circle(cx - RAD * 0.3, cy - RAD * 0.2, 4.5, WHITE);
+    draw_circle(cx + RAD * 0.3, cy - RAD * 0.2, 4.5, WHITE);
+    draw_circle(cx - RAD * 0.3 + look_x, cy - RAD * 0.2 + look_y, 2., BLACK);
+    draw_circle(cx + RAD * 0.3 + look_x, cy - RAD * 0.2 + look_y, 2., BLACK);
 
     draw_triangle(
-        vec2(cx - DUCKY_RADIUS / 2.5, cy + DUCKY_RADIUS * 0.2),
-        vec2(cx + DUCKY_RADIUS / 2.5, cy + DUCKY_RADIUS * 0.2),
-        vec2(cx, cy + DUCKY_RADIUS * 0.5),
+        vec2(cx - RAD / 2.5, cy + RAD * 0.15),
+        vec2(cx + RAD / 2.5, cy + RAD * 0.15),
+        vec2(cx, cy + RAD * 0.5),
         ORANGE,
     );
 }
