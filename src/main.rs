@@ -14,12 +14,12 @@ const PENGUIN_RADIUS: f32 = 24.0;
 const ROCKET_RADIUS: f32 = 4.0;
 
 const ROCKET_SPEED: f32 = 5.0;
-const ROCKET_TTL: u16 = 180;
+const ROCKET_TTL: u16 = 120;
 const ROCKET_SHOOT_COOLDOWN: u16 = 30;
 
-const EXPLOSION_RADIUS: f32 = 32.0;
+const EXPLOSION_RADIUS: f32 = 48.0;
 const EXPLOSION_TTL: u16 = 8;
-const EXPLOSION_FORCE: f32 = 1.5;
+const EXPLOSION_FORCE: f32 = 1.6;
 
 const COYOTE_DURATION: u8 = 12;
 const GRAVITY: f32 = 0.1;
@@ -96,7 +96,7 @@ fn init_game_state() -> GameState {
     let rects = [
         (0., 20., 100., 4.),
 
-        (100., 15., 1., 5.),
+        (100., 10., 1., 11.),
         (20.5, 16., 3., 2.),
         (24., 13., 3., 2.),
         (28., 10.5, 3., 6.),
@@ -193,11 +193,15 @@ fn fixed_update(state: &mut GameState, mouse_pos: Vec2) {
 }
 
 fn update_penguin_movement(penguin: &mut Ducky, rects: &[Rect], explosions: &[Explosion]) {
-    let (accel, friction) = if penguin.coyote_time == 0 {
+    let (accel, mut friction) = if penguin.coyote_time == 0 {
         (WALK_ACCEL_AIR, FRICTION_AIR)
     } else {
         (WALK_ACCEL_GROUND, FRICTION_GROUND)
     };
+
+    if penguin.vel.x.abs() < 0.1 {
+        friction *= 0.8;
+    }
 
     penguin.vel.x *= friction;
     if is_key_down(KeyCode::D) {
@@ -299,7 +303,7 @@ fn update_rockets_movement(
     for &idx in removed_rocket_idxs.iter().rev() {
         let rocket = rockets.swap_remove(idx);
         explosions.push(Explosion {
-            pos: rocket.pos,
+            pos: rocket.pos + rocket.vel,
             radius: EXPLOSION_RADIUS,
             ttl: EXPLOSION_TTL,
             initial_ttl: EXPLOSION_TTL,
