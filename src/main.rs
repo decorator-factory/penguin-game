@@ -1,6 +1,7 @@
 use arrayvec::ArrayVec;
 use macroquad::prelude::*;
 use miniquad::TextureWrap;
+use parry2d::shape::ConvexPolygon;
 use std::f32::consts::PI;
 
 mod draw_utils;
@@ -36,7 +37,7 @@ const FRICTION_AIR: f32 = 0.999;
 const FRICTION_GROUND: f32 = 0.99;
 
 const WALK_ACCEL_GROUND: f32 = 0.1;
-const WALK_ACCEL_AIR: f32 = 0.05;
+const WALK_ACCEL_AIR: f32 = 0.1;
 
 fn window_conf() -> Conf {
     Conf {
@@ -78,6 +79,7 @@ struct GameState {
     level: Level,
     rockets: Vec<Rocket>,
     explosions: Vec<Explosion>,
+    debug_strings: Vec<String>,
 }
 
 fn viewport_offset_to_camera(offset: Vec2) -> Camera2D {
@@ -90,13 +92,19 @@ fn viewport_offset_to_camera(offset: Vec2) -> Camera2D {
 }
 
 fn init_game_state() -> GameState {
-    let penguin = Penguin { pos: Vec2::ZERO, vel: Vec2::ZERO, coyote_time: 0, rocket_cooldown: 0 };
+    let penguin = Penguin {
+        pos: vec2(0.0, -PENGUIN_RADIUS * 2.0),
+        vel: Vec2::ZERO,
+        coyote_time: 0,
+        rocket_cooldown: 0,
+    };
 
     GameState {
         penguin,
         level: build_level(),
         rockets: Vec::with_capacity(32),
         explosions: Vec::with_capacity(32),
+        debug_strings: Vec::with_capacity(16),
     }
 }
 
@@ -116,11 +124,20 @@ fn build_level() -> Level {
         ctx.texture_set_wrap(tex.raw_miniquad_id(), TextureWrap::Repeat, TextureWrap::Repeat);
     }
 
-    Level::new([
-        (vec2(-1200.0, 0.0), vec2(2400.0, 48.0), tex_bricks.clone().into()),
-        (vec2(-128.0, -120.0), vec2(72.0, 120.0), tex_purple.clone().into()),
-        (vec2(256.0, -120.0), vec2(72.0, 120.0), tex_purple.clone().into()),
-    ])
+    Level::new(
+        &[
+            (vec2(-1200.0, 0.0), vec2(2400.0, 48.0), tex_bricks.clone().into()),
+            (vec2(-128.0, -120.0), vec2(72.0, 120.0), tex_purple.clone().into()),
+            (vec2(256.0, -120.0), vec2(72.0, 120.0), tex_purple.clone().into()),
+        ],
+        &[
+            (&[vec2(400.0, 0.0), vec2(600.0, 0.0), vec2(400.0, -100.0)], tex_purple.clone().into()),
+            (
+                &[vec2(-600.0, 0.0), vec2(-600.0, -24.0), vec2(-400.0, 0.0)],
+                tex_purple.clone().into(),
+            ),
+        ],
+    )
 }
 
 #[macroquad::main(window_conf)]
@@ -166,20 +183,36 @@ async fn main() {
         }
         set_default_camera();
 
-        // Debug information();
+        // Debug information
         draw_text(&format!("FPS: {}", get_fps()), 32., 32., 16., WHITE);
+        draw_text(&format!("coyote frames: {}", state.penguin.coyote_time), 32., 48., 16., WHITE);
+        let mut y = 64.0;
+        for string in state.debug_strings.iter() {
+            draw_text(string, 32.0, y, 16.0, WHITE);
+            y += 16.0;
+        }
+
         next_frame().await
     }
 }
 
 fn fixed_update(state: &mut GameState, mouse_pos: Vec2) {
+    state.debug_strings.clear();
+
     update_rockets_movement(
         &mut state.rockets,
         &mut state.explosions,
         state.level.rect_colliders(),
+        state.level.poly_colliders(),
     );
     update_explosions(&mut state.explosions);
-    update_penguin_movement(&mut state.penguin, state.level.rect_colliders(), &state.explosions);
+    update_penguin_movement(
+        &mut state.penguin,
+        state.level.rect_colliders(),
+        state.level.poly_colliders(),
+        &state.explosions,
+        |debug| state.debug_strings.push(debug),
+    );
 
     state.penguin.rocket_cooldown = state.penguin.rocket_cooldown.saturating_sub(1);
     // Spawn rocket
@@ -200,7 +233,13 @@ fn fixed_update(state: &mut GameState, mouse_pos: Vec2) {
     }
 }
 
-fn update_penguin_movement(penguin: &mut Penguin, rects: &[Rect], explosions: &[Explosion]) {
+fn update_penguin_movement(
+    penguin: &mut Penguin,
+    rects: &[Rect],
+    polygons: &[ConvexPolygon],
+    explosions: &[Explosion],
+    mut debug: impl FnMut(String),
+) {
     let (accel, mut friction) = if penguin.coyote_time == 0 {
         (WALK_ACCEL_AIR, FRICTION_AIR)
     } else {
@@ -240,32 +279,62 @@ fn update_penguin_movement(penguin: &mut Penguin, rects: &[Rect], explosions: &[
         penguin.vel += vec2(0., -JUMP_SPEED);
     }
 
-    // Ducky collision detection
-    let mut is_grounded = false;
+    // Penguin collision detection
     let penguin_circle = Circle::new(penguin.pos.x, penguin.pos.y, PENGUIN_RADIUS);
+
+    // TODO: I really have no idea what I'm doing when it comes to collision detection.
+    //       Detecting if we're grounded seems super janky with polygons. Fix later please
+    let penguin_if_it_were_to_fall = penguin_circle
+        .offset(penguin.vel.max(vec2(f32::MIN, 0.0)) + vec2(0.0, GRAVITY * 4.0));
+    let mut dv_for_grounded = Vec2::ZERO;
+    let mut any_point_upwards = false;
+
     for rect in rects {
         if let Some(dv) = circle_impacts_rect(penguin_circle.offset(penguin.vel), *rect) {
             penguin.pos += dv / 2.;
 
-            if dv.length_squared() > 0.05 {
-                let cancel_vec = penguin.vel.project_onto_normalized(dv.normalize());
-                penguin.vel -= cancel_vec / 4.;
-            }
+            let cancel_vec = penguin.vel.project_onto_normalized(dv.normalize_or_zero());
+            penguin.vel -= cancel_vec / 4.;
+        }
 
-            if !is_grounded
-                && let Some(dv_when_slightly_lower) =
-                    circle_impacts_rect(penguin_circle.offset(penguin.vel + vec2(0., 0.1)), *rect)
-            {
-                let angle = dv_when_slightly_lower.to_angle();
-                is_grounded = -PI / 2. - 0.1 < angle && angle < -PI / 2. + 0.1;
-            }
+        if let Some(dv) = circle_impacts_rect(penguin_if_it_were_to_fall, *rect) {
+            dv_for_grounded += dv;
+
+            let angle = dv.to_angle();
+            any_point_upwards =
+                any_point_upwards || (-PI / 2. - 0.34 < angle && angle < -PI / 2. + 0.34);
         }
     }
+
+    for poly in polygons {
+        if let Some(dv) = circle_impacts_convex(penguin_circle.offset(penguin.vel), poly) {
+            penguin.pos += dv / 2.;
+
+            let cancel_vec = penguin.vel.project_onto_normalized(dv.normalize_or_zero());
+            penguin.vel -= cancel_vec / 4.;
+        }
+
+        if let Some(dv) = circle_impacts_convex(penguin_if_it_were_to_fall, poly) {
+            dv_for_grounded += dv;
+
+            let angle = dv.to_angle();
+            any_point_upwards =
+                any_point_upwards || (-PI / 2. - 0.67 < angle && angle < -PI / 2. + 0.67);
+        }
+    }
+
+    let is_grounded = {
+        let dv_angle = dv_for_grounded.to_angle();
+        any_point_upwards || -PI / 2. - 0.34 < dv_angle && dv_angle < -PI / 2. + 0.34
+    };
+
     if is_grounded {
         penguin.coyote_time = COYOTE_DURATION;
     } else {
         penguin.coyote_time = penguin.coyote_time.saturating_sub(1);
     }
+
+    debug(format!("dv_for_grounded: {dv_for_grounded}"));
 
     let penguin_circle = Circle::new(penguin.pos.x, penguin.pos.y, PENGUIN_RADIUS);
     for &exp in explosions {
@@ -282,6 +351,7 @@ fn update_rockets_movement(
     rockets: &mut Vec<Rocket>,
     explosions: &mut Vec<Explosion>,
     rects: &[Rect],
+    polygons: &[ConvexPolygon],
 ) {
     let mut removed_rocket_idxs = ArrayVec::<_, 8>::new();
 
@@ -293,16 +363,22 @@ fn update_rockets_movement(
         rocket.ttl -= 1;
     }
 
-    for (idx, rocket) in rockets.iter_mut().enumerate() {
+    'outer: for (idx, rocket) in rockets.iter_mut().enumerate() {
         if rocket.ttl == 0 {
             removed_rocket_idxs.push(idx);
         } else {
+            let circle = Circle::new(rocket.pos.x, rocket.pos.y, ROCKET_RADIUS);
             for &rect in rects {
-                if circle_impacts_rect(Circle::new(rocket.pos.x, rocket.pos.y, ROCKET_RADIUS), rect)
-                    .is_some()
-                {
+                if circle_impacts_rect(circle, rect).is_some() {
                     removed_rocket_idxs.push(idx);
-                    break;
+                    continue 'outer;
+                }
+            }
+
+            for poly in polygons {
+                if circle_impacts_convex(circle, poly).is_some() {
+                    removed_rocket_idxs.push(idx);
+                    continue 'outer;
                 }
             }
         }
@@ -311,7 +387,7 @@ fn update_rockets_movement(
     for &idx in removed_rocket_idxs.iter().rev() {
         let rocket = rockets.swap_remove(idx);
         explosions.push(Explosion {
-            pos: rocket.pos + rocket.vel,
+            pos: rocket.pos,
             radius: EXPLOSION_RADIUS,
             ttl: EXPLOSION_TTL,
             initial_ttl: EXPLOSION_TTL,
@@ -355,6 +431,24 @@ fn circle_impacts_rect(circle: Circle, rect: Rect) -> Option<Vec2> {
     contact.map(|c| {
         let delta = c.point1 - c.point2;
         vec2(delta.x, delta.y)
+    })
+}
+
+/// If an intersection occurs, return how much to move the circle
+fn circle_impacts_convex(circle: Circle, poly: &ConvexPolygon) -> Option<Vec2> {
+    use nalgebra::Isometry2;
+    use parry2d::query;
+    use parry2d::shape::Ball;
+
+    let ball = Ball::new(circle.radius());
+    let ball_pos = Isometry2::translation(circle.x, circle.y);
+
+    let contact = query::contact(&Isometry2::default(), poly, &ball_pos, &ball, 0.0).unwrap();
+
+    contact.and_then(|c| {
+        let delta = c.point1 - c.point2;
+        let rv = vec2(delta.x, delta.y);
+        rv.is_finite().then_some(rv)
     })
 }
 
