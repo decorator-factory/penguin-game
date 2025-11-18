@@ -1,6 +1,11 @@
 use arrayvec::ArrayVec;
 use macroquad::prelude::*;
+use miniquad::TextureWrap;
 use std::f32::consts::PI;
+
+mod draw_utils;
+mod levels;
+use levels::Level;
 
 const WINDOW_WIDTH: u32 = 1600;
 const WINDOW_HEIGHT: u32 = 900;
@@ -18,8 +23,8 @@ const ROCKET_TTL: u16 = 120;
 const ROCKET_SHOOT_COOLDOWN: u16 = 30;
 
 const EXPLOSION_RADIUS: f32 = 48.0;
-const EXPLOSION_TTL: u16 = 8;
-const EXPLOSION_FORCE: f32 = 1.6;
+const EXPLOSION_TTL: u16 = 6;
+const EXPLOSION_FORCE: f32 = 2.0;
 
 const COYOTE_DURATION: u8 = 12;
 const GRAVITY: f32 = 0.1;
@@ -39,13 +44,13 @@ fn window_conf() -> Conf {
         window_width: WINDOW_WIDTH as i32,
         window_height: WINDOW_HEIGHT as i32,
         window_resizable: false,
-        sample_count: 4,
+        sample_count: 2,
         ..Default::default()
     }
 }
 
 #[derive(Copy, Clone, Debug)]
-struct Ducky {
+struct Penguin {
     pos: Vec2,
     vel: Vec2,
     rocket_cooldown: u16,
@@ -68,12 +73,8 @@ struct Explosion {
     initial_ttl: u16,
 }
 
-struct Level {
-    rects: Vec<Rect>,
-}
-
 struct GameState {
-    penguin: Ducky,
+    penguin: Penguin,
     level: Level,
     rockets: Vec<Rocket>,
     explosions: Vec<Explosion>,
@@ -89,34 +90,37 @@ fn viewport_offset_to_camera(offset: Vec2) -> Camera2D {
 }
 
 fn init_game_state() -> GameState {
-    let penguin =
-        Ducky { pos: vec2(100., 100.), vel: Vec2::ZERO, coyote_time: 0, rocket_cooldown: 0 };
-
-    #[rustfmt::skip]
-    let rects = [
-        (0., 20., 100., 4.),
-
-        (100., 10., 1., 11.),
-        (20.5, 16., 3., 2.),
-        (24., 13., 3., 2.),
-        (28., 10.5, 3., 6.),
-
-        (30., 25., 1., 5.),
-        (40., 25., 1., 5.),
-        (50., 25., 1., 5.),
-        (60., 25., 1., 5.),
-        (70., 25., 1., 5.),
-        (80., 25., 1., 5.),
-        (90., 25., 1., 5.),
-
-    ].map(|(x, y, w, h)| Rect::new(x * 32., y * 32., w * 32., h * 32.)).to_vec();
+    let penguin = Penguin { pos: Vec2::ZERO, vel: Vec2::ZERO, coyote_time: 0, rocket_cooldown: 0 };
 
     GameState {
         penguin,
-        level: Level { rects },
+        level: build_level(),
         rockets: Vec::with_capacity(32),
         explosions: Vec::with_capacity(32),
     }
+}
+
+fn build_level() -> Level {
+    let tex_bricks = Texture2D::from_file_with_format(
+        include_bytes!("./assets/bricks.png"),
+        Some(ImageFormat::Png),
+    );
+    let tex_purple = Texture2D::from_file_with_format(
+        include_bytes!("./assets/purple.png"),
+        Some(ImageFormat::Png),
+    );
+
+    // Make the textures repeat instead of clamping
+    let ctx = unsafe { get_internal_gl() }.quad_context;
+    for tex in [&tex_bricks, &tex_purple] {
+        ctx.texture_set_wrap(tex.raw_miniquad_id(), TextureWrap::Repeat, TextureWrap::Repeat);
+    }
+
+    Level::new([
+        (vec2(-1200.0, 0.0), vec2(2400.0, 48.0), tex_bricks.clone().into()),
+        (vec2(-128.0, -120.0), vec2(72.0, 120.0), tex_purple.clone().into()),
+        (vec2(256.0, -120.0), vec2(72.0, 120.0), tex_purple.clone().into()),
+    ])
 }
 
 #[macroquad::main(window_conf)]
@@ -150,8 +154,8 @@ async fn main() {
         // Main rendering
         set_camera(&viewport_offset_to_camera(viewport_offset));
         clear_background(DARKBLUE);
-        for &Rect { x, y, w, h } in &state.level.rects {
-            draw_rectangle(x, y, w, h, GRAY);
+        for graphic in state.level.graphics() {
+            graphic.macroquad_draw();
         }
         draw_penguin(state.penguin.pos, state.penguin.vel, angle_to_mouse);
         for &rocket in &state.rockets {
@@ -169,9 +173,13 @@ async fn main() {
 }
 
 fn fixed_update(state: &mut GameState, mouse_pos: Vec2) {
-    update_rockets_movement(&mut state.rockets, &mut state.explosions, &state.level.rects);
+    update_rockets_movement(
+        &mut state.rockets,
+        &mut state.explosions,
+        state.level.rect_colliders(),
+    );
     update_explosions(&mut state.explosions);
-    update_penguin_movement(&mut state.penguin, &state.level.rects, &state.explosions);
+    update_penguin_movement(&mut state.penguin, state.level.rect_colliders(), &state.explosions);
 
     state.penguin.rocket_cooldown = state.penguin.rocket_cooldown.saturating_sub(1);
     // Spawn rocket
@@ -192,7 +200,7 @@ fn fixed_update(state: &mut GameState, mouse_pos: Vec2) {
     }
 }
 
-fn update_penguin_movement(penguin: &mut Ducky, rects: &[Rect], explosions: &[Explosion]) {
+fn update_penguin_movement(penguin: &mut Penguin, rects: &[Rect], explosions: &[Explosion]) {
     let (accel, mut friction) = if penguin.coyote_time == 0 {
         (WALK_ACCEL_AIR, FRICTION_AIR)
     } else {
@@ -372,16 +380,6 @@ fn penguin_impacts_explosion(penguin: Circle, exp: Circle) -> Option<(Vec2, f32)
     })
 }
 
-fn draw_arrow(start: Vec2, end: Vec2, color: Color) {
-    let delta = (start - end).normalize_or_zero();
-
-    let v1 = end;
-    let v2 = end + delta * 12. + delta.perp() * 6.;
-    let v3 = end + delta * 12. - delta.perp() * 6.;
-    draw_line(start.x, start.y, end.x, end.y, 2., color);
-    draw_triangle(v1, v2, v3, color);
-}
-
 fn draw_rocket(pos: Vec2, vel: Vec2) {
     let dir = vel.normalize_or_zero();
 
@@ -420,12 +418,15 @@ fn draw_penguin(pos: Vec2, vel: Vec2, eyes_dir: Vec2) {
     draw_ellipse(cx, cy + RAD * 0.4, RAD * 0.7, RAD * 0.4, 0.0, LIGHTGRAY);
     draw_rectangle(cx - RAD * 0.6, cy - RAD * 0.2, RAD * 1.2, RAD * 0.4, PENGUINGRAY);
 
-    let [look_x, look_y] = (eyes_dir * RAD * 0.07).to_array();
+    {
+        let [look_x, look_y] = (eyes_dir * 2.5).to_array();
+        let [vx, vy] = (vel.clamp_length_max(16.0) * 0.0125 * RAD).round().to_array();
 
-    draw_circle(cx - RAD * 0.3, cy - RAD * 0.2, 4.5, WHITE);
-    draw_circle(cx + RAD * 0.3, cy - RAD * 0.2, 4.5, WHITE);
-    draw_circle(cx - RAD * 0.3 + look_x, cy - RAD * 0.2 + look_y, 2., BLACK);
-    draw_circle(cx + RAD * 0.3 + look_x, cy - RAD * 0.2 + look_y, 2., BLACK);
+        draw_circle(cx - RAD * 0.3 - vx, cy - RAD * 0.2 - vy, 5., WHITE);
+        draw_circle(cx + RAD * 0.3 - vx, cy - RAD * 0.2 - vy, 5., WHITE);
+        draw_circle(cx - RAD * 0.3 - vx + look_x, cy - RAD * 0.2 + look_y - vy, 2., BLACK);
+        draw_circle(cx + RAD * 0.3 - vx + look_x, cy - RAD * 0.2 + look_y - vy, 2., BLACK);
+    }
 
     draw_triangle(
         vec2(cx - RAD / 2.5, cy + RAD * 0.15),

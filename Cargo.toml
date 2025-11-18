@@ -12,4 +12,5 @@ glam = "0.27"
 nalgebra = "0.34"
 arrayvec = "0.7"
 macroquad = { version = "0.4.14", features = ["audio"] }
+miniquad = "0.4.8"
 parry2d = "0.25.3"

@@ -588,6 +588,7 @@ dependencies = [
  "arrayvec",
  "glam 0.27.0",
  "macroquad",
+ "miniquad",
  "nalgebra",
  "parry2d",
 ]
