@@ -269,7 +269,7 @@ fn update_penguin_movement(
     if penguin.coyote_time == COYOTE_DURATION {
         penguin.vel.y = 0.;
     }
-    if penguin.coyote_time == 0 && penguin.vel.y < MAX_GRAVITY_SPEED {
+    if penguin.coyote_time < COYOTE_DURATION && penguin.vel.y < MAX_GRAVITY_SPEED {
         penguin.vel.y += GRAVITY;
     }
 
@@ -285,7 +285,7 @@ fn update_penguin_movement(
     // TODO: I really have no idea what I'm doing when it comes to collision detection.
     //       Detecting if we're grounded seems super janky with polygons. Fix later please
     let penguin_if_it_were_to_fall = penguin_circle
-        .offset(penguin.vel.max(vec2(f32::MIN, 0.0)) + vec2(0.0, GRAVITY * 4.0));
+        .offset(penguin.vel.max(vec2(f32::MIN, 0.0)) + vec2(0.0, GRAVITY * 2.0));
     let mut dv_for_grounded = Vec2::ZERO;
     let mut any_point_upwards = false;
 
