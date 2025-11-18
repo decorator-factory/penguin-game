@@ -7,6 +7,7 @@ pub struct Level {
     graphics: Vec<Graphic>,
     rect_colliders: Vec<Rect>,
     poly_colliders: Vec<parry2d::shape::ConvexPolygon>,
+    start_pos: Vec2,
 }
 
 pub enum Graphic {
@@ -28,7 +29,7 @@ impl Graphic {
 }
 
 impl Level {
-    pub fn new(rects: &[(Vec2, Vec2, DrawOpts)], polygons: &[(&[Vec2], DrawOpts)]) -> Level {
+    pub fn new(start_pos: Vec2, rects: &[(Vec2, Vec2, DrawOpts)], polygons: &[(&[Vec2], DrawOpts)]) -> Level {
         let mut graphics = Vec::with_capacity(rects.len() + polygons.len());
         let mut rect_colliders = Vec::with_capacity(rects.len());
         let mut poly_colliders = Vec::with_capacity(polygons.len());
@@ -49,7 +50,39 @@ impl Level {
             );
         }
 
-        Level { graphics, rect_colliders, poly_colliders }
+        Level { start_pos, graphics, rect_colliders, poly_colliders }
+    }
+
+    pub fn insert_graphics(
+        &mut self,
+        rects: &[(Vec2, Vec2, DrawOpts)],
+        polygons: &[(&[Vec2], DrawOpts)],
+    ) {
+        for (pos, wh, draw) in rects {
+            self.graphics.push(Graphic::Rect { pos: *pos, wh: *wh, draw: draw.clone() });
+        }
+
+        for (points, draw) in polygons {
+            self.graphics.push(Graphic::Polygon { points: points.to_vec(), draw: draw.clone() });
+        }
+
+        // make sure the new graphics are in the background
+        self.graphics.rotate_right(rects.len() + polygons.len());
+    }
+
+    pub fn insert_colliders(&mut self, rects: &[(Vec2, Vec2)], polygons: &[&[Vec2]]) {
+        for (pos, wh) in rects {
+            self.rect_colliders.push(Rect { x: pos.x, y: pos.y, w: wh.x, h: wh.y });
+        }
+
+        for points in polygons {
+            let parry2d_points: Vec<_> =
+                points.iter().map(|p| nalgebra::Point2::new(p.x, p.y)).collect();
+            self.poly_colliders.push(
+                parry2d::shape::ConvexPolygon::from_convex_hull(&parry2d_points)
+                    .expect("invalid polygon"),
+            );
+        }
     }
 
     pub fn graphics(&self) -> &[Graphic] {
@@ -62,5 +95,9 @@ impl Level {
 
     pub fn poly_colliders(&self) -> &[parry2d::shape::ConvexPolygon] {
         &self.poly_colliders
+    }
+
+    pub fn start_pos(&self) -> Vec2 {
+        self.start_pos
     }
 }
