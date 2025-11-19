@@ -32,8 +32,11 @@ jobs:
           cp -r ./html ./github-pages
           cp ./target/wasm32-unknown-unknown/release/penguin-game.wasm ./github-pages/penguin-game.wasm
 
-      - name: Deploy
-        uses: peaceiris/actions-gh-pages@v3
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3.0.1
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./github-pages
+          path: ./github-pages
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4.0.5
