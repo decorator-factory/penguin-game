@@ -8,7 +8,7 @@
   <style>
     html,
     body,
-    canvas {
+    #glcanvas {
       margin: 0;
       padding: 0;
       width: 100%;
@@ -17,6 +17,11 @@
       position: absolute;
       background: black;
       z-index: 0;
+    }
+
+    #glcanvas {
+      /* Prevent the user from being able to drag the canvas, which can happen with Ctrl+A */
+      user-select: none;
     }
   </style>
 </head>
