@@ -240,18 +240,13 @@ async fn main() {
     let mut time_bank: f64 = 0.0;
     let mut last_time = get_time();
 
-    let mut viewport_offset = Vec2::ZERO;
-
     loop {
         // Mouse input
         let screen_size = {
             let (w, h) = screen_size();
             vec2(w, h)
         };
-
-        let (screen_mx, screen_my) = mouse_position();
-        let mouse_pos = vec2(screen_mx, screen_my) + viewport_offset;
-        let angle_to_mouse = (mouse_pos - state.penguin.pos).normalize_or(vec2(1.0, 0.0));
+        let device = MacroquadInput;
 
         // Frame debt logic
         let now = get_time();
@@ -259,18 +254,18 @@ async fn main() {
         last_time = now;
 
         while time_bank >= UPDATE_FRAME_TIME {
-            fixed_update(&mut state, mouse_pos);
+            fixed_update(&mut state, &device);
             time_bank -= UPDATE_FRAME_TIME;
         }
-        viewport_offset = state.penguin.pos - screen_size / 2.;
 
         // Main rendering
+        let viewport_offset = state.penguin.pos - screen_size / 2.;
         set_camera(&viewport_offset_to_camera(viewport_offset, screen_size));
         clear_background(DARKBLUE);
         for graphic in state.level.graphics() {
             graphic.macroquad_draw();
         }
-        draw_penguin(state.penguin.pos, state.penguin.vel, angle_to_mouse);
+        draw_penguin(state.penguin.pos, state.penguin.vel, Vec2::from_angle(device.look_angle()));
         for &rocket in &state.rockets {
             draw_rocket(rocket.pos, rocket.vel);
         }
@@ -292,7 +287,38 @@ async fn main() {
     }
 }
 
-fn fixed_update(state: &mut GameState, mouse_pos: Vec2) {
+#[derive(Clone, Copy, Debug)]
+enum Input {
+    Left,
+    Right,
+    Shoot,
+}
+
+trait InputDevice {
+    fn is_input_down(&self, input: Input) -> bool;
+    fn look_angle(&self) -> f32;
+}
+
+struct MacroquadInput;
+
+impl InputDevice for MacroquadInput {
+    fn is_input_down(&self, input: Input) -> bool {
+        match input {
+            Input::Left => is_key_down(KeyCode::A),
+            Input::Right => is_key_down(KeyCode::D),
+            Input::Shoot => is_mouse_button_down(MouseButton::Left),
+        }
+    }
+
+    fn look_angle(&self) -> f32 {
+        let (sx, sy) = screen_size();
+        let (mx, my) = mouse_position();
+
+        vec2(mx - sx / 2., my - sy / 2.).to_angle()
+    }
+}
+
+fn fixed_update(state: &mut GameState, device: &impl InputDevice) {
     state.debug_strings.clear();
 
     update_rockets_movement(
@@ -303,6 +329,7 @@ fn fixed_update(state: &mut GameState, mouse_pos: Vec2) {
     );
     update_explosions(&mut state.explosions);
     update_penguin_movement(
+        device,
         &mut state.penguin,
         state.level.rect_colliders(),
         state.level.poly_colliders(),
@@ -312,9 +339,9 @@ fn fixed_update(state: &mut GameState, mouse_pos: Vec2) {
 
     state.penguin.rocket_cooldown = state.penguin.rocket_cooldown.saturating_sub(1);
     // Spawn rocket
-    if is_mouse_button_down(MouseButton::Left) && state.penguin.rocket_cooldown == 0 {
+    if device.is_input_down(Input::Shoot) && state.penguin.rocket_cooldown == 0 {
         state.penguin.rocket_cooldown = ROCKET_SHOOT_COOLDOWN;
-        let dir = (mouse_pos - state.penguin.pos).normalize_or(vec2(1., 0.));
+        let dir = Vec2::from_angle(device.look_angle());
         state.rockets.push(Rocket {
             pos: state.penguin.pos,
             vel: dir * ROCKET_SPEED,
@@ -324,6 +351,7 @@ fn fixed_update(state: &mut GameState, mouse_pos: Vec2) {
 }
 
 fn update_penguin_movement(
+    device: &impl InputDevice,
     penguin: &mut Penguin,
     rects: &[Rect],
     polygons: &[ConvexPolygon],
@@ -341,14 +369,14 @@ fn update_penguin_movement(
     }
 
     penguin.vel.x *= friction;
-    if is_key_down(KeyCode::D) {
+    if device.is_input_down(Input::Right) {
         if penguin.vel.x + accel < MAX_WALK_SPEED {
             penguin.vel.x += accel;
         } else if penguin.vel.x < MAX_WALK_SPEED {
             penguin.vel.x = MAX_WALK_SPEED;
         }
     }
-    if is_key_down(KeyCode::A) {
+    if device.is_input_down(Input::Left) {
         if penguin.vel.x - accel > -MAX_WALK_SPEED {
             penguin.vel.x -= accel;
         } else if penguin.vel.x > -MAX_WALK_SPEED {

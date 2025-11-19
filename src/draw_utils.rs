@@ -61,6 +61,7 @@ pub fn draw_textured_poly(points: &[Vec2], opts: impl Into<DrawOpts>) {
     gl.geometry(&vertices, &indices);
 }
 
+#[allow(dead_code)]
 pub fn draw_arrow(start: Vec2, end: Vec2, color: Color) {
     let delta = (start - end).normalize_or_zero();
 
