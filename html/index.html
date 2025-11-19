@@ -33,7 +33,10 @@
     cringe, but it's not a big deal if the entire site is just for the game.
     -->
   <script src="./mq_js_bundle.js"></script>
-  <script>load("penguin-game.wasm");</script>
+  <script>
+    importObject.env.is_wasm_demo = () => document.location.hash == "#demo"
+    load("penguin-game.wasm");
+  </script>
 </body>
 
 </html>
