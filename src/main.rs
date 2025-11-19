@@ -33,7 +33,7 @@ const MAX_WALK_SPEED: f32 = 0.8;
 const FRICTION_AIR: f32 = 0.999;
 const FRICTION_GROUND: f32 = 0.98;
 
-const WALK_ACCEL_GROUND: f32 = 0.05;
+const WALK_ACCEL_GROUND: f32 = 0.04;
 const WALK_ACCEL_AIR: f32 = 0.03;
 
 fn window_conf() -> Conf {
@@ -102,39 +102,34 @@ fn init_game_state() -> GameState {
     }
 }
 
-fn build_level() -> Level {
-    let tex_bricks = Texture2D::from_file_with_format(
-        include_bytes!("./assets/bricks.png"),
-        Some(ImageFormat::Png),
-    );
-    let tex_bricks_dark = Texture2D::from_file_with_format(
-        include_bytes!("./assets/bricks_dark.png"),
-        Some(ImageFormat::Png),
-    );
-    let tex_purple = Texture2D::from_file_with_format(
-        include_bytes!("./assets/purple.png"),
-        Some(ImageFormat::Png),
-    );
-    let tex_wood = Texture2D::from_file_with_format(
-        include_bytes!("./assets/wood.png"),
-        Some(ImageFormat::Png),
-    );
-    let tex_wood_dark = Texture2D::from_file_with_format(
-        include_bytes!("./assets/wood_dark.png"),
-        Some(ImageFormat::Png),
-    );
-    let tex_arrow_left = Texture2D::from_file_with_format(
-        include_bytes!("./assets/arrow_left.png"),
-        Some(ImageFormat::Png),
+fn make_wrapping_png_texture(png_bytes: &[u8]) -> Texture2D {
+    let ctx = unsafe { get_internal_gl() }.quad_context;
+    let img = image::load_from_memory_with_format(png_bytes, ImageFormat::Png).unwrap();
+    let bytes = img.to_rgba8().into_raw();
+
+    assert!(
+        img.width().is_power_of_two() && img.height().is_power_of_two(),
+        "WebGL doesn't support repeating non-power-of-two textures",
     );
 
-    // Make the textures repeat insted of clamping
-    let ctx = unsafe { get_internal_gl() }.quad_context;
-    for tex in
-        [&tex_bricks, &tex_purple, &tex_wood, &tex_wood_dark, &tex_arrow_left, &tex_bricks_dark]
-    {
-        ctx.texture_set_wrap(tex.raw_miniquad_id(), TextureWrap::Repeat, TextureWrap::Repeat);
-    }
+    let texture_id = ctx.new_texture_from_data_and_format(
+        &bytes,
+        miniquad::TextureParams {
+            width: img.width(),
+            height: img.height(),
+            wrap: TextureWrap::Repeat,
+            ..Default::default()
+        },
+    );
+    Texture2D::from_miniquad_texture(texture_id)
+}
+
+fn build_level() -> Level {
+    let tex_bricks = make_wrapping_png_texture(include_bytes!("./assets/bricks.png"));
+    let tex_bricks_dark = make_wrapping_png_texture(include_bytes!("./assets/bricks_dark.png"));
+    let tex_wood = make_wrapping_png_texture(include_bytes!("./assets/wood.png"));
+    let tex_wood_dark = make_wrapping_png_texture(include_bytes!("./assets/wood_dark.png"));
+    let tex_arrow_left = make_wrapping_png_texture(include_bytes!("./assets/arrow_left.png"));
 
     let level_width: f32 = 6000.0;
     let level_height: f32 = 12000.0;
@@ -144,11 +139,9 @@ fn build_level() -> Level {
         vec2(240.0, -48.0),
         &[
             // Arrow floor
-            (vec2(0.0, 0.0), vec2(level_width, 48.0), tex_arrow_left.clone().into()),
-
+            (vec2(0.0, 0.0), vec2(level_width, 32.0), tex_arrow_left.clone().into()),
             // Leftmost helper stump,
             (vec2(160.0, -48.0), vec2(48.0, 48.0), tex_wood.clone().into()),
-
             // Leftmost house wall
             (vec2(0.0, -360.0), vec2(64.0, 360.0), tex_bricks.clone().into()),
             (vec2(-24.0, -1200.0), vec2(24.0, 1200.0), tex_bricks.clone().into()),

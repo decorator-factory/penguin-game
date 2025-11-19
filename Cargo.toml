@@ -8,9 +8,13 @@ lto = "fat"
 codegen-units = 1
 
 [dependencies]
-glam = "0.27"
-nalgebra = "0.34"
+glam = { version = "0.27", default-features = false }
+nalgebra = { version = "0.34", default-features = false }
 arrayvec = "0.7"
-macroquad = { version = "0.4.14", features = ["audio"] }
+macroquad = "0.4.14"
 miniquad = "0.4.8"
-parry2d = "0.25.3"
+parry2d = { version = "0.25.3", default-features = false, features = [
+    "required-features",
+    "alloc",
+] }
+image = { version = "0.24.9", default-features = false, features = ["png"] }
