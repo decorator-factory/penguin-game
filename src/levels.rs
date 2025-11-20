@@ -1,7 +1,11 @@
 use glam::Vec2;
 use macroquad::math::Rect;
 
-use crate::draw_utils::{DrawOpts, draw_textured_poly, draw_textured_rect};
+use crate::draw_utils::{
+    DrawOpts,
+    draw_textured_poly,
+    draw_textured_rect,
+};
 
 pub struct Level {
     graphics: Vec<Graphic>,

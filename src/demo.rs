@@ -1,4 +1,7 @@
-use crate::input::{Input, InputDevice};
+use crate::input::{
+    Input,
+    InputDevice,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum DemoAction {

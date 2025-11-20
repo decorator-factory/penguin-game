@@ -9,7 +9,10 @@ mod levels;
 mod wasm;
 use levels::Level;
 
-use crate::input::{InputDevice, MacroquadInput};
+use crate::input::{
+    InputDevice,
+    MacroquadInput,
+};
 
 const UPS_NORMAL: f64 = 240.;
 const UPS_FAST: f64 = 1200.;
@@ -137,12 +140,27 @@ async fn main() {
 
 mod updates {
     use super::{
-        ConvexPolygon, Explosion, GameState, PENGUIN_RADIUS, Penguin, ROCKET_RADIUS, Rocket,
+        ConvexPolygon,
+        Explosion,
+        GameState,
+        PENGUIN_RADIUS,
+        Penguin,
+        ROCKET_RADIUS,
+        Rocket,
     };
-    use crate::input::{Input, InputDevice};
+    use crate::input::{
+        Input,
+        InputDevice,
+    };
     use arrayvec::ArrayVec;
-    use glam::{Vec2, vec2};
-    use macroquad::math::{Circle, Rect};
+    use glam::{
+        Vec2,
+        vec2,
+    };
+    use macroquad::math::{
+        Circle,
+        Rect,
+    };
     use std::f32::consts::PI;
 
     const ROCKET_SPEED: f32 = 3.0;
@@ -392,9 +410,15 @@ mod updates {
 
     /// Circle is the "second object"
     fn circle_impacts_rect_alt(circle: Circle, rect: Rect) -> Option<parry2d::query::Contact> {
-        use nalgebra::{Isometry2, Vector2};
+        use nalgebra::{
+            Isometry2,
+            Vector2,
+        };
         use parry2d::query;
-        use parry2d::shape::{Ball, Cuboid};
+        use parry2d::shape::{
+            Ball,
+            Cuboid,
+        };
 
         let cuboid = Cuboid::new(Vector2::new(rect.w / 2., rect.h / 2.));
         let ball = Ball::new(circle.radius());
@@ -444,7 +468,12 @@ mod updates {
 }
 
 mod graphics {
-    use super::{Explosion, GameState, PENGUIN_RADIUS, ROCKET_RADIUS};
+    use super::{
+        Explosion,
+        GameState,
+        PENGUIN_RADIUS,
+        ROCKET_RADIUS,
+    };
     use macroquad::prelude::*;
 
     pub fn draw_state(state: &GameState, look_angle: f32) {
@@ -557,15 +586,12 @@ fn make_wrapping_png_texture(png_bytes: &[u8]) -> Texture2D {
         "WebGL doesn't support repeating non-power-of-two textures",
     );
 
-    let texture_id = ctx.new_texture_from_data_and_format(
-        &bytes,
-        miniquad::TextureParams {
-            width: img.width(),
-            height: img.height(),
-            wrap: TextureWrap::Repeat,
-            ..Default::default()
-        },
-    );
+    let texture_id = ctx.new_texture_from_data_and_format(&bytes, miniquad::TextureParams {
+        width: img.width(),
+        height: img.height(),
+        wrap: TextureWrap::Repeat,
+        ..Default::default()
+    });
     Texture2D::from_miniquad_texture(texture_id)
 }
 
