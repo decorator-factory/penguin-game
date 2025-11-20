@@ -11,10 +11,11 @@ codegen-units = 1
 glam = { version = "0.27", default-features = false }
 nalgebra = { version = "0.34", default-features = false }
 arrayvec = "0.7"
-macroquad = "0.4.14"
-miniquad = "0.4.8"
-parry2d = { version = "0.25.3", default-features = false, features = [
+macroquad = "0.4"
+miniquad = "0.4" # should be pinned by macroquad
+parry2d = { version = "0.25", default-features = false, features = [
     "required-features",
     "alloc",
 ] }
-image = { version = "0.24.9", default-features = false, features = ["png"] }
+image = { version = "0.24", default-features = false, features = ["png"] }
+thiserror = "2"

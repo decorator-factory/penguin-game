@@ -386,6 +386,7 @@ dependencies = [
  "miniquad",
  "nalgebra",
  "parry2d",
+ "thiserror",
 ]
 
 [[package]]

@@ -1,0 +1,125 @@
+penguindemo-text-v0
+
+# Get on   top of the house
+at  150: look 30
+at  200: look 60
+at  250: look 75
+at  300: look 90
+at  300: on   shoot
+at  304: off  shoot
+at  316: on   left
+at  332: off  left
+at  336: on   right
+at  344: off  right
+at  600: on   shoot
+at  604: off  shoot
+at  604: on   right
+at  612: off  right
+at  660: on   left
+at  792: off  left
+
+# Get on  to the first bridge
+at  800: look 100
+at  820: look 110
+at  840: look 120
+at  860: on   right
+at  872: on   shoot
+at  876: off  shoot
+at 1000: off  right
+at 1000: look 110
+at 1020: on   left
+at 1020: look 100
+at 1040: look 95
+at 1060: look 90
+at 1080: off  left
+
+# Get on  to the secon  d bridge
+at 1100: on   right
+at 1300: on   shoot
+at 1304: off  shoot
+at 1464: off  right
+at 1464: on   left
+at 1520: off  left
+
+# Get on  to the third bridge
+at 1540: look 95
+at 1552: look 100
+at 1564: on   right
+at 1700: look 110
+at 1740: look 120
+at 1900: on   shoot
+at 1904: off  shoot
+at 2208: off  right
+
+# Get on  to the fourth bridge
+at 2216: look 110
+at 2232: look 100
+at 2300: on   right
+at 2316: look 90
+at 2440: on   shoot
+at 2444: off  shoot
+at 2600: off  right
+at 2700: on   left
+at 2752: off  left
+
+# Get into the tower
+at 2780: look 85
+at 2800: look 80
+at 2800: on   right
+at 2832: off  right
+at 2840: on   left
+at 2900: on   shoot
+at 2904: off  shoot
+at 2924: look 85
+at 2940: look 90
+at 3200: off  left
+
+# Sync on  to the first tower platform
+at 3240: on   shoot
+at 3244: off  shoot
+at 3448: on   shoot
+at 3452: off  shoot
+at 3584: on   shoot
+at 3588: off  shoot
+at 3700: on   right
+at 3872: off  right
+at 3916: on   left
+at 3924: off  left
+
+# Jump on  to the tiny leg
+at 3952: look 95
+at 3956: on   right
+at 3980: off  right
+at 4000: on   shoot
+at 4004: off  shoot
+at 4120: on   left
+at 4164: off  left
+at 4200: look 90
+at 4240: look 85
+at 4320: on   shoot
+at 4324: off  shoot
+at 4340: on   left
+at 4444: off  left
+at 4452: on   right
+at 4500: off  right
+
+# Victory spin
+at 4540: look 80
+at 4552: look 100
+at 4564: look 120
+at 4576: look 140
+at 4588: look 160
+at 4600: look 180
+at 4612: look 200
+at 4624: look 220
+at 4636: look 240
+at 4648: look 260
+at 4660: look 280
+at 4672: look 300
+at 4684: look 320
+at 4696: look 340
+at 4708: look 0
+at 4720: look 20
+at 4732: look 40
+at 4744: look 60
+at 4756: look 80

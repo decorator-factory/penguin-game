@@ -10,9 +10,15 @@ pub enum DemoAction {
     SetLookAngle(f32), // degrees!
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct DemoMovie {
     actions: Box<[(u64, DemoAction)]>,
+}
+
+impl std::fmt::Debug for DemoMovie {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DemoMovie").field("actions[]", &self.actions.len()).finish()
+    }
 }
 
 impl DemoMovie {
@@ -108,135 +114,367 @@ impl<'a> InputDevice for DemoInput<'a> {
     }
 }
 
-pub fn make_demo_movie() -> DemoMovie {
-    DemoMovie::new(DEMO_ACTIONS.to_vec().into_boxed_slice())
+//-----
+
+#[derive(thiserror::Error, PartialEq, Debug)]
+#[error("{detail} at line {lineno}, column {colno}")]
+pub struct DemoParseError {
+    lineno: u32,
+    colno: u32,
+    detail: DemoParseErrorDetail,
 }
 
-static DEMO_ACTIONS: &[(u64, DemoAction)] = &[
-    //
-    // Get on top of the house
-    (150, DemoAction::SetLookAngle(30.0)),
-    (200, DemoAction::SetLookAngle(60.0)),
-    (250, DemoAction::SetLookAngle(75.0)),
-    (300, DemoAction::SetLookAngle(90.0)),
-    (300, DemoAction::InputOn(Input::Shoot)),
-    (304, DemoAction::InputOff(Input::Shoot)),
-    (316, DemoAction::InputOn(Input::Left)),
-    (332, DemoAction::InputOff(Input::Left)),
-    (336, DemoAction::InputOn(Input::Right)),
-    (344, DemoAction::InputOff(Input::Right)),
-    (600, DemoAction::InputOn(Input::Shoot)),
-    (604, DemoAction::InputOff(Input::Shoot)),
-    (604, DemoAction::InputOn(Input::Right)),
-    (612, DemoAction::InputOff(Input::Right)),
-    (660, DemoAction::InputOn(Input::Left)),
-    (792, DemoAction::InputOff(Input::Left)),
-    //
-    // Get onto the first bridge
-    (800, DemoAction::SetLookAngle(100.0)),
-    (820, DemoAction::SetLookAngle(110.0)),
-    (840, DemoAction::SetLookAngle(120.0)),
-    (860, DemoAction::InputOn(Input::Right)),
-    (872, DemoAction::InputOn(Input::Shoot)),
-    (876, DemoAction::InputOff(Input::Shoot)),
-    (1000, DemoAction::InputOff(Input::Right)),
-    (1000, DemoAction::SetLookAngle(110.0)),
-    (1020, DemoAction::InputOn(Input::Left)),
-    (1020, DemoAction::SetLookAngle(100.0)),
-    (1040, DemoAction::SetLookAngle(95.0)),
-    (1060, DemoAction::SetLookAngle(90.0)),
-    (1080, DemoAction::InputOff(Input::Left)),
-    //
-    // Get onto the second bridge
-    (1100, DemoAction::InputOn(Input::Right)),
-    (1300, DemoAction::InputOn(Input::Shoot)),
-    (1304, DemoAction::InputOff(Input::Shoot)),
-    (1464, DemoAction::InputOff(Input::Right)),
-    (1464, DemoAction::InputOn(Input::Left)),
-    (1520, DemoAction::InputOff(Input::Left)),
-    //
-    // Get onto the third bridge
-    (1540, DemoAction::SetLookAngle(95.0)),
-    (1552, DemoAction::SetLookAngle(100.0)),
-    (1564, DemoAction::InputOn(Input::Right)),
-    (1700, DemoAction::SetLookAngle(110.0)),
-    (1740, DemoAction::SetLookAngle(120.0)),
-    (1900, DemoAction::InputOn(Input::Shoot)),
-    (1904, DemoAction::InputOff(Input::Shoot)),
-    (2208, DemoAction::InputOff(Input::Right)),
-    //
-    // Get onto the fourth bridge
-    (2216, DemoAction::SetLookAngle(110.0)),
-    (2232, DemoAction::SetLookAngle(100.0)),
-    (2300, DemoAction::InputOn(Input::Right)),
-    (2316, DemoAction::SetLookAngle(90.0)),
-    (2440, DemoAction::InputOn(Input::Shoot)),
-    (2444, DemoAction::InputOff(Input::Shoot)),
-    (2600, DemoAction::InputOff(Input::Right)),
-    (2700, DemoAction::InputOn(Input::Left)),
-    (2752, DemoAction::InputOff(Input::Left)),
-    //
-    // Get into the tower
-    (2780, DemoAction::SetLookAngle(85.0)),
-    (2800, DemoAction::SetLookAngle(80.0)),
-    (2800, DemoAction::InputOn(Input::Right)),
-    (2832, DemoAction::InputOff(Input::Right)),
-    (2840, DemoAction::InputOn(Input::Left)),
-    (2900, DemoAction::InputOn(Input::Shoot)),
-    (2904, DemoAction::InputOff(Input::Shoot)),
-    (2924, DemoAction::SetLookAngle(85.0)),
-    (2940, DemoAction::SetLookAngle(90.0)),
-    (3200, DemoAction::InputOff(Input::Left)),
-    //
-    // Sync onto the crazy ledge
-    (3240, DemoAction::InputOn(Input::Shoot)),
-    (3244, DemoAction::InputOff(Input::Shoot)),
-    (3448, DemoAction::InputOn(Input::Shoot)),
-    (3452, DemoAction::InputOff(Input::Shoot)),
-    (3584, DemoAction::InputOn(Input::Shoot)),
-    (3588, DemoAction::InputOff(Input::Shoot)),
-    (3700, DemoAction::InputOn(Input::Right)),
-    (3872, DemoAction::InputOff(Input::Right)),
-    (3916, DemoAction::InputOn(Input::Left)),
-    (3924, DemoAction::InputOff(Input::Left)),
-    //
-    // Jump onto the tiny leg
-    (3952, DemoAction::SetLookAngle(95.0)),
-    (3956, DemoAction::InputOn(Input::Right)),
-    (3980, DemoAction::InputOff(Input::Right)),
-    (4000, DemoAction::InputOn(Input::Shoot)),
-    (4004, DemoAction::InputOff(Input::Shoot)),
-    (4120, DemoAction::InputOn(Input::Left)),
-    (4164, DemoAction::InputOff(Input::Left)),
-    //
-    // Jump onto the finish ledge
-    (4200, DemoAction::SetLookAngle(90.0)),
-    (4240, DemoAction::SetLookAngle(85.0)),
-    (4320, DemoAction::InputOn(Input::Shoot)),
-    (4324, DemoAction::InputOff(Input::Shoot)),
-    (4340, DemoAction::InputOn(Input::Left)),
-    (4444, DemoAction::InputOff(Input::Left)),
-    (4452, DemoAction::InputOn(Input::Right)),
-    (4500, DemoAction::InputOff(Input::Right)),
-    //
-    // Victory spin
-    (4540, DemoAction::SetLookAngle(80.0)),
-    (4552, DemoAction::SetLookAngle(100.0)),
-    (4564, DemoAction::SetLookAngle(120.0)),
-    (4576, DemoAction::SetLookAngle(140.0)),
-    (4588, DemoAction::SetLookAngle(160.0)),
-    (4600, DemoAction::SetLookAngle(180.0)),
-    (4612, DemoAction::SetLookAngle(200.0)),
-    (4624, DemoAction::SetLookAngle(220.0)),
-    (4636, DemoAction::SetLookAngle(240.0)),
-    (4648, DemoAction::SetLookAngle(260.0)),
-    (4660, DemoAction::SetLookAngle(280.0)),
-    (4672, DemoAction::SetLookAngle(300.0)),
-    (4684, DemoAction::SetLookAngle(320.0)),
-    (4696, DemoAction::SetLookAngle(340.0)),
-    (4708, DemoAction::SetLookAngle(0.0)),
-    (4720, DemoAction::SetLookAngle(20.0)),
-    (4732, DemoAction::SetLookAngle(40.0)),
-    (4744, DemoAction::SetLookAngle(60.0)),
-    (4756, DemoAction::SetLookAngle(80.0)),
-];
+#[derive(thiserror::Error, PartialEq, Debug)]
+pub enum DemoParseErrorDetail {
+    #[error("Invalid demo movie header. Expected 'penguindemo-text-v0' and a newline")]
+    InvalidHeader,
+    #[error("{0}")]
+    InvalidSyntax(&'static str),
+    #[error("Frame numbers in the demo movie must be in a non-decreasing order")]
+    FrameDecreased,
+}
+
+fn expect_keyword<'src>(source: &'src [u8], prefix: &[u8]) -> Option<&'src [u8]> {
+    if source.starts_with(prefix) {
+        Some(unsafe { source.get_unchecked(prefix.len()..) })
+    } else {
+        None
+    }
+}
+
+fn split_while<T, F>(slice: &[T], mut pred: F) -> (&[T], &[T])
+where
+    F: FnMut(&T) -> bool,
+{
+    if slice.is_empty() {
+        return (slice, slice);
+    }
+
+    match slice.iter().position(|x| !pred(x)) {
+        Some(index) => (&slice[..index], &slice[index..]),
+        None => (slice, &slice[slice.len()..]),
+    }
+}
+
+#[allow(dead_code)]
+pub fn unparse_movie(movie: &DemoMovie, w: &mut impl std::fmt::Write) -> std::fmt::Result {
+    writeln!(w, "penguindemo-text-v0")?;
+
+    fn format_input(inp: Input) -> &'static str {
+        match inp {
+            Input::Left => "left",
+            Input::Right => "right",
+            Input::Shoot => "shoot",
+        }
+    }
+
+    for (frame, action) in &movie.actions {
+        write!(w, "at {frame}: ")?;
+        match action {
+            DemoAction::InputOn(input) => writeln!(w, "on {}", format_input(*input))?,
+            DemoAction::InputOff(input) => writeln!(w, "off {}", format_input(*input))?,
+            DemoAction::SetLookAngle(angle) => writeln!(w, "look {angle}")?,
+        }
+    }
+
+    Ok(())
+}
+
+pub fn parse_movie(source: &[u8]) -> Result<DemoMovie, DemoParseError> {
+    // if this gets any more complicated, look into `nom` or other parsing libraries
+    use DemoParseErrorDetail as E;
+
+    let Some(source) = expect_keyword(source, b"penguindemo-text-v0\n") else {
+        return Err(DemoParseError {
+            lineno: 1,
+            colno: 1,
+            detail: DemoParseErrorDetail::InvalidHeader,
+        });
+    };
+
+    let mut lineno: u32 = 1;
+    let mut actions: Vec<(u64, DemoAction)> = Vec::with_capacity(1024);
+    let mut last_frame = 0u64;
+    for line in source.split(|b| *b == b'\n') {
+        lineno += 1;
+        let line_start = line;
+        let line = line.trim_ascii();
+
+        if line.is_empty() {
+            continue;
+        }
+
+        if line.starts_with(b"#") {
+            // comment
+            continue;
+        }
+
+        let wrap_err = |line: &[u8], detail| {
+            let colno = (1 + line_start.len() - line.len()) as u32;
+            Err(DemoParseError { lineno, colno, detail })
+        };
+
+        let Some(line) = expect_keyword(line, b"at") else {
+            return wrap_err(line, E::InvalidSyntax("Expected 'at' keyword"));
+        };
+        if !line.starts_with(b" ") {
+            return wrap_err(line, E::InvalidSyntax("Expected space after 'at'"));
+        }
+        let line = line.trim_ascii_start();
+
+        let frame_number_position = line; // saved for error reporting later
+        let (digits, line) = split_while(line, |b| b.is_ascii_digit());
+        if digits.is_empty() {
+            return wrap_err(line, E::InvalidSyntax("expected decimal integer"));
+        }
+
+        let digits = unsafe { str::from_utf8_unchecked(digits) }; // SAFETY: ASCII is valid UTF-8
+        let Ok(frame) = digits.parse::<u64>() else {
+            return wrap_err(line, E::InvalidSyntax("number is too large"));
+        };
+
+        let Some(line) = expect_keyword(line, b":") else {
+            return wrap_err(line, E::InvalidSyntax("expected colon (:)"));
+        };
+        let line = line.trim_ascii_start();
+
+        let (line, action) = match try_parse_action(line) {
+            Ok((line, action)) => (line, action),
+            Err((line, err)) => return wrap_err(line, err),
+        };
+
+        let line = line.trim_ascii_start();
+        if !line.is_empty() && !line.starts_with(b"#") {
+            // line doesn't end with a comment and is not empty -- something dangling
+            return wrap_err(
+                line,
+                E::InvalidSyntax("unrecognized characters at the end of a line"),
+            );
+        }
+
+        if frame < last_frame {
+            return wrap_err(frame_number_position, E::FrameDecreased);
+        }
+        last_frame = frame;
+
+        actions.push((frame, action));
+    }
+
+    Ok(DemoMovie::new(actions.into_boxed_slice()))
+}
+
+#[allow(clippy::type_complexity)]
+fn try_parse_action(line: &[u8]) -> Result<(&[u8], DemoAction), (&[u8], DemoParseErrorDetail)> {
+    use DemoParseErrorDetail as E;
+
+    // line is already trimmed
+    enum Kw {
+        On,
+        Off,
+        Look,
+    }
+
+    let (kw, line) = if let Some(line) = expect_keyword(line, b"on") {
+        (Kw::On, line)
+    } else if let Some(line) = expect_keyword(line, b"off") {
+        (Kw::Off, line)
+    } else if let Some(line) = expect_keyword(line, b"look") {
+        (Kw::Look, line)
+    } else {
+        return Err((line, E::InvalidSyntax("expected 'on', 'off', or 'look'")));
+    };
+
+    if !line.starts_with(b" ") {
+        return Err((line, E::InvalidSyntax("Expected space after keyword")));
+    }
+    let line = line.trim_ascii_start();
+
+    let (line, action) = match kw {
+        Kw::On | Kw::Off => {
+            let Some((line, input)) = try_parse_input(line) else {
+                return Err((line, E::InvalidSyntax("expected 'left', 'right' or 'shoot'")));
+            };
+            let action = match kw {
+                Kw::On => DemoAction::InputOn(input),
+                Kw::Off => DemoAction::InputOff(input),
+                _ => unreachable!(),
+            };
+            (line, action)
+        }
+        Kw::Look => {
+            let (numeric, line) =
+                split_while(line, |b| matches!(*b, b'0'..=b'9' | b'.' | b'-' | b'+'));
+            if numeric.is_empty() {
+                return Err((line, E::InvalidSyntax("expected decimal number1")));
+            }
+            let numeric = unsafe { str::from_utf8_unchecked(numeric) }; // SAFETY: ASCII is valid UTF-8
+            let Ok(angle) = str::parse::<f32>(numeric) else {
+                return Err((line, E::InvalidSyntax("expected decimal number2")));
+            };
+            (line, DemoAction::SetLookAngle(angle))
+        }
+    };
+
+    Ok((line, action))
+}
+
+fn try_parse_input(line: &[u8]) -> Option<(&[u8], Input)> {
+    if let Some(line) = expect_keyword(line, b"left") {
+        Some((line, Input::Left))
+    } else if let Some(line) = expect_keyword(line, b"right") {
+        Some((line, Input::Right))
+    } else if let Some(line) = expect_keyword(line, b"shoot") {
+        Some((line, Input::Shoot))
+    } else {
+        None
+    }
+}
+
+//-----
+
+pub fn make_demo_movie() -> DemoMovie {
+    parse_movie(DEMO_SOURCE).unwrap()
+}
+
+static DEMO_SOURCE: &[u8] = include_bytes!("../demos/intended.demo");
+
+//-----
+
+#[cfg(test)]
+mod parse_tests {
+    use crate::demo::{
+        DemoAction,
+        expect_keyword,
+        split_while,
+    };
+    use crate::input::Input;
+
+    use super::{
+        DemoParseError,
+        DemoParseErrorDetail,
+        parse_movie,
+    };
+
+    #[test]
+    pub fn test_split_while_empty() {
+        let (left, right) = split_while(b"aaaabcd", |c| *c == b'?');
+        assert_eq!((left, right), (&b""[..], &b"aaaabcd"[..]));
+    }
+
+    #[test]
+    pub fn test_split_while_empty_string() {
+        let (left, right) = split_while(b"", |c| *c == b'?');
+        assert_eq!((left, right), (&b""[..], &b""[..]));
+    }
+
+    #[test]
+    pub fn test_split_while_mixed() {
+        let (left, right) = split_while(b"aaaabcd", |c| *c == b'a');
+        assert_eq!((left, right), (&b"aaaa"[..], &b"bcd"[..]));
+    }
+
+    #[test]
+    pub fn test_expect_ok() {
+        assert_eq!(Some(&b" banana"[..]), expect_keyword(b"apple banana", b"apple"));
+    }
+
+    #[test]
+    pub fn test_expect_fail() {
+        assert_eq!(None, expect_keyword(b"apple banana", b"cherry"));
+    }
+
+    #[test]
+    pub fn test_expect_fail_empty_source() {
+        assert_eq!(None, expect_keyword(b"", b"cherry"));
+    }
+
+    #[test]
+    pub fn test_wrong_version() {
+        let source = b"penguindemo-text-v69\n";
+        let err = parse_movie(source).unwrap_err();
+        assert_eq!(err, DemoParseError {
+            lineno: 1,
+            colno: 1,
+            detail: DemoParseErrorDetail::InvalidHeader,
+        });
+    }
+
+    #[test]
+    pub fn test_wrong_header() {
+        let source = b"\x00WRONG";
+        let err = parse_movie(source).unwrap_err();
+        assert_eq!(err, DemoParseError {
+            lineno: 1,
+            colno: 1,
+            detail: DemoParseErrorDetail::InvalidHeader,
+        });
+    }
+
+    #[test]
+    pub fn test_empty_movie() {
+        let source = b"penguindemo-text-v0\n";
+        let movie = parse_movie(source).unwrap();
+        assert_eq!(movie.actions.as_ref(), []);
+    }
+
+    #[test]
+    pub fn test_simple_movie() {
+        let source = b"penguindemo-text-v0\n\
+            at 0: on left\n\
+            at 9: on shoot \n\
+            at 100: off shoot\n\
+            at 257: off left\n\
+            at 1000:on right\n"; // space after : not required
+        let movie = parse_movie(source).unwrap();
+        assert_eq!(movie.actions.as_ref(), [
+            (0, DemoAction::InputOn(Input::Left)),
+            (9, DemoAction::InputOn(Input::Shoot)),
+            (100, DemoAction::InputOff(Input::Shoot)),
+            (257, DemoAction::InputOff(Input::Left)),
+            (1000, DemoAction::InputOn(Input::Right)),
+        ]);
+    }
+
+    #[test]
+    pub fn test_look_movie() {
+        let source = b"penguindemo-text-v0\n\
+            at 42: look 90\n\
+            at 69: look 0\n\
+            at 420: look -0.12345\n";
+        let movie = parse_movie(source).unwrap();
+        assert_eq!(movie.actions.as_ref(), [
+            (42, DemoAction::SetLookAngle(90.0)),
+            (69, DemoAction::SetLookAngle(0.0)),
+            (420, DemoAction::SetLookAngle(-0.12345)),
+        ]);
+    }
+
+    #[test]
+    pub fn test_movie_with_comments() {
+        let source = b"penguindemo-text-v0\n\
+            # this comment takes an entire line
+            at 42: look 90  # this comment is after a line\n\
+            at 69: on left  # this too\n\
+            at 420: off shoot  # this too\n";
+        let movie = parse_movie(source).unwrap();
+        assert_eq!(movie.actions.as_ref(), [
+            (42, DemoAction::SetLookAngle(90.0)),
+            (69, DemoAction::InputOn(Input::Left)),
+            (420, DemoAction::InputOff(Input::Shoot)),
+        ]);
+    }
+
+    #[test]
+    pub fn test_space_required_after_keyword() {
+        let sources = [
+            &b"penguindemo-text-v0\nat42: look 90\n"[..],
+            &b"penguindemo-text-v0\nat 42: look90\n"[..],
+            &b"penguindemo-text-v0\nat 42: onleft\n"[..],
+        ];
+        for source in sources {
+            let err = parse_movie(source).unwrap_err();
+            assert_eq!(err.lineno, 2);
+            assert!(matches!(err.detail, DemoParseErrorDetail::InvalidSyntax(_)));
+        }
+    }
+}
