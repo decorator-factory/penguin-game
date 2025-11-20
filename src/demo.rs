@@ -10,19 +10,13 @@ pub enum DemoAction {
     SetLookAngle(f32), // degrees!
 }
 
-pub struct DemoInput {
-    frame: u64,
-    actions: Box<[(u64, DemoAction)]>, // should be sorted by u64
-    action_index: usize,
-    look_angle: f32,
-    // TODO: use enumset or something like that
-    is_left_on: bool,
-    is_right_on: bool,
-    is_shoot_on: bool,
+#[derive(Clone)]
+pub struct DemoMovie {
+    actions: Box<[(u64, DemoAction)]>,
 }
 
-impl DemoInput {
-    pub fn new(actions: Box<[(u64, DemoAction)]>) -> DemoInput {
+impl DemoMovie {
+    pub fn new(actions: Box<[(u64, DemoAction)]>) -> DemoMovie {
         {
             // ensure frame numbers are non-decreasing
             let mut last_frame = 0u64;
@@ -32,8 +26,30 @@ impl DemoInput {
             }
         }
 
+        DemoMovie { actions }
+    }
+
+    #[allow(dead_code)]
+    pub fn actions(&self) -> &[(u64, DemoAction)] {
+        &self.actions
+    }
+}
+
+pub struct DemoInput<'a> {
+    frame: u64,
+    movie: &'a DemoMovie,
+    action_index: usize,
+    look_angle: f32,
+    // TODO: use enumset or something like that
+    is_left_on: bool,
+    is_right_on: bool,
+    is_shoot_on: bool,
+}
+
+impl<'a> DemoInput<'a> {
+    pub fn new(movie: &'a DemoMovie) -> DemoInput<'a> {
         DemoInput {
-            actions,
+            movie,
             frame: 0,
             action_index: 0,
             look_angle: 0.0,
@@ -60,7 +76,7 @@ impl DemoInput {
     }
 }
 
-impl InputDevice for DemoInput {
+impl<'a> InputDevice for DemoInput<'a> {
     fn is_input_down(&self, input: Input) -> bool {
         match input {
             Input::Left => self.is_left_on,
@@ -76,12 +92,12 @@ impl InputDevice for DemoInput {
     fn next_frame(&mut self) {
         self.frame += 1;
 
-        if self.action_index >= self.actions.len() {
+        if self.action_index >= self.movie.actions.len() {
             return;
         }
 
         loop {
-            let Some((frame, action)) = self.actions.get(self.action_index) else { return };
+            let Some((frame, action)) = self.movie.actions.get(self.action_index) else { return };
             if *frame == self.frame {
                 self.handle_action(*action);
                 self.action_index += 1;
@@ -92,7 +108,11 @@ impl InputDevice for DemoInput {
     }
 }
 
-pub static DEMO_MOVIE: &[(u64, DemoAction)] = &[
+pub fn make_demo_movie() -> DemoMovie {
+    DemoMovie::new(DEMO_ACTIONS.to_vec().into_boxed_slice())
+}
+
+static DEMO_ACTIONS: &[(u64, DemoAction)] = &[
     //
     // Get on top of the house
     (150, DemoAction::SetLookAngle(30.0)),

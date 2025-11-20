@@ -7,7 +7,6 @@ mod draw_utils;
 mod input;
 mod levels;
 mod wasm;
-use levels::Level;
 
 use crate::input::{
     InputDevice,
@@ -58,7 +57,7 @@ struct Explosion {
 
 struct GameState {
     penguin: Penguin,
-    level: Level,
+    level: levels::Level,
     rockets: Vec<Rocket>,
     explosions: Vec<Explosion>,
     debug_strings: Vec<String>,
@@ -97,8 +96,10 @@ async fn main() {
 
     let demo_banner = if is_demo { "[DEMO] " } else { "" };
 
+    let demo_movie;
     let device: &mut dyn InputDevice = if is_demo {
-        &mut demo::DemoInput::new(demo::DEMO_MOVIE.to_vec().into_boxed_slice())
+        demo_movie = demo::make_demo_movie();
+        &mut demo::DemoInput::new(&demo_movie)
     } else {
         &mut MacroquadInput
     };
@@ -595,7 +596,7 @@ fn make_wrapping_png_texture(png_bytes: &[u8]) -> Texture2D {
     Texture2D::from_miniquad_texture(texture_id)
 }
 
-fn build_level() -> Level {
+fn build_level() -> levels::Level {
     let tex_bricks = make_wrapping_png_texture(include_bytes!("./assets/bricks.png"));
     let tex_bricks_dark = make_wrapping_png_texture(include_bytes!("./assets/bricks_dark.png"));
     let tex_wood = make_wrapping_png_texture(include_bytes!("./assets/wood.png"));
@@ -605,7 +606,7 @@ fn build_level() -> Level {
     let level_width: f32 = 6000.0;
     let level_height: f32 = 12000.0;
 
-    let mut level = Level::new(
+    let mut level = levels::Level::new(
         vec2(240.0, -48.0),
         &[
             // Arrow floor
