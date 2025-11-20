@@ -29,7 +29,11 @@ impl Graphic {
 }
 
 impl Level {
-    pub fn new(start_pos: Vec2, rects: &[(Vec2, Vec2, DrawOpts)], polygons: &[(&[Vec2], DrawOpts)]) -> Level {
+    pub fn new(
+        start_pos: Vec2,
+        rects: &[(Vec2, Vec2, DrawOpts)],
+        polygons: &[(&[Vec2], DrawOpts)],
+    ) -> Level {
         let mut graphics = Vec::with_capacity(rects.len() + polygons.len());
         let mut rect_colliders = Vec::with_capacity(rects.len());
         let mut poly_colliders = Vec::with_capacity(polygons.len());
