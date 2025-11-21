@@ -8,6 +8,9 @@ mod input;
 mod levels;
 mod wasm;
 
+#[cfg(not(target_family = "wasm"))]
+mod pico_args;
+
 use crate::input::{
     InputDevice,
     MacroquadInput,
@@ -76,64 +79,57 @@ fn main() {
         high_dpi: true,
         ..Default::default()
     };
-    macroquad::Window::from_config(conf, amain());
-}
 
-async fn amain() {
-    #[cfg(target_family = "wasm")]
-    let demo_recording_file = None;
-    #[cfg(not(target_family = "wasm"))]
-    let demo_recording_file = std::env::var_os("PENGUIN_RECORD_FILE");
-
-    let is_demo = demo_recording_file.is_none() && {
-        #[cfg(target_family = "wasm")]
-        {
-            wasm::is_wasm_demo()
-        }
-        #[cfg(not(target_family = "wasm"))]
-        {
-            std::env::var_os("PENGUIN_DEMO").is_some_and(|s| !s.is_empty())
+    let args = match cli::parse_args() {
+        Ok(args) => args,
+        Err(e) => {
+            eprintln!("Invalid command-line arguments: {e}");
+            return;
         }
     };
-
-    let banner = if is_demo {
-        "[DEMO] "
-    } else if demo_recording_file.is_some() {
-        "[RECORDING] "
-    } else {
-        ""
-    };
-
-    // macroquad requires our future to be 'static, and DemoInput
-    // is not owning, so we leak the device
-    if is_demo {
-        let mut device = demo::DemoInput::new(demo::make_demo_movie());
-        run_game(&mut device, banner).await;
-    } else if let Some(demo_path) = demo_recording_file {
-        let file = std::fs::OpenOptions::new().write(true).create_new(true).open(&demo_path);
-        let mut file = match file {
-            Ok(file) => file,
-            Err(e) => {
-                eprintln!(
-                    "Could not open the destination file {demo_path:?} for demo recording: {e}"
-                );
-                return;
-            }
-        };
-
-        let mut device = demo::DemoRecorder::new(MacroquadInput);
-        run_game(&mut device, banner).await;
-        let movie = device.into_movie();
-
-        if let Err(e) = demo::unparse_movie(&movie, &mut file) {
-            eprintln!("Failed to write demo movie to {demo_path:?}: {e}");
-        };
-    } else {
-        run_game(&mut MacroquadInput, banner).await;
-    };
+    macroquad::Window::from_config(conf, amain(args));
 }
 
-async fn run_game(device: &mut impl InputDevice, banner: &str) {
+async fn amain(args: cli::Args) {
+    match args {
+        cli::Args::ShowHelp => {
+            eprintln!("{}", cli::HELP);
+            std::process::exit(1);
+        }
+        cli::Args::JustPlay => {
+            run_game(&mut MacroquadInput).await;
+        }
+        cli::Args::PlayDemo => {
+            let mut device = demo::DemoInput::new(demo::make_demo_movie());
+            run_game(&mut device).await;
+        }
+        cli::Args::RecordDemo { output_path } => {
+            let file = std::fs::OpenOptions::new().write(true).create_new(true).open(&output_path);
+            let mut file = match file {
+                Ok(file) => file,
+                Err(e) => {
+                    eprintln!(
+                        "Could not open the destination file {output_path:?} for demo recording: {e}"
+                    );
+                    return;
+                }
+            };
+
+            let mut device = demo::DemoRecorder::new(MacroquadInput);
+            run_game(&mut device).await;
+            let movie = device.into_movie();
+
+            if let Err(e) = demo::unparse_movie(&movie, &mut file) {
+                eprintln!("Failed to write demo movie to {output_path:?}: {e}");
+            };
+        }
+        cli::Args::KeepRecordingDemo { .. } => {
+            unimplemented!("--keep-recording-demo is under construction :-(")
+        }
+    }
+}
+
+async fn run_game(device: &mut impl InputDevice) {
     let mut state = init_game_state();
 
     let mut time_bank: f64 = 0.0;
@@ -167,7 +163,7 @@ async fn run_game(device: &mut impl InputDevice, banner: &str) {
 
         // Debug information
         draw_text(&format!("FPS: {:03}, target_ups: {:04}", get_fps(), ups), 32., 32., 16., WHITE);
-        draw_text(&format!("{}frame: {}", banner, frame), 32., 48., 16., WHITE);
+        draw_text(&format!("frame: {}", frame), 32., 48., 16., WHITE);
         let mut y = 64.0;
         for string in state.debug_strings.iter() {
             draw_text(string, 32.0, y, 16.0, WHITE);
@@ -608,6 +604,89 @@ mod graphics {
             vec2(cx, cy + RAD * 0.5),
             ORANGE,
         );
+    }
+}
+
+mod cli {
+    use std::path::PathBuf;
+
+    pub const HELP: &str = "\
+penguin-game
+
+Usage:
+    penguin-game
+    penguin-game demo
+    penguin-game record-demo --output-file <path>
+    penguin-game keep-recording-demo --input-file <path> --output-file <path>
+
+See the README of the project for more details.";
+
+    #[cfg_attr(target_family = "wasm", allow(dead_code))]
+    #[derive(Debug)]
+    pub enum Args {
+        ShowHelp,
+        JustPlay,
+        PlayDemo,
+        RecordDemo {
+            output_path: PathBuf,
+        },
+        #[allow(dead_code)]
+        KeepRecordingDemo {
+            input_path: PathBuf,
+            output_path: PathBuf,
+        },
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[derive(thiserror::Error, Debug)]
+    pub enum Error {
+        #[error("Expected a subcommand")]
+        ExpectedSubcommand,
+        #[error("Unknown subcommand: {0}")]
+        UnknownSubcommand(String),
+        #[error("{0}")]
+        PicoArgs(#[from] crate::pico_args::Error),
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    pub fn parse_args() -> Result<Args, Error> {
+        fn parse_path(s: &std::ffi::OsStr) -> Result<PathBuf, &'static str> {
+            Ok(s.into())
+        }
+
+        let mut pargs = crate::pico_args::Arguments::from_env();
+
+        if pargs.contains(["-h", "--help"]) {
+            return Ok(Args::ShowHelp);
+        }
+
+        let Some(subcommand) = pargs.subcommand()? else {
+            if pargs.0.is_empty() {
+                return Ok(Args::JustPlay);
+            } else {
+                return Err(Error::ExpectedSubcommand);
+            }
+        };
+
+        match subcommand.as_ref() {
+            "play" => Ok(Args::JustPlay),
+            "demo" => Ok(Args::PlayDemo),
+            "record-demo" => {
+                let output_path = pargs.value_from_os_str("--output-file", parse_path)?;
+                Ok(Args::RecordDemo { output_path })
+            }
+            "keep-recording-demo" => {
+                let input_path = pargs.value_from_os_str("--input-file", parse_path)?;
+                let output_path = pargs.value_from_os_str("--output-file", parse_path)?;
+                Ok(Args::KeepRecordingDemo { input_path, output_path })
+            }
+            s => Err(Error::UnknownSubcommand(s.to_string())),
+        }
+    }
+
+    #[cfg(target_family = "wasm")]
+    pub fn parse_args() -> Result<Args, &'static str> {
+        Ok(if crate::wasm::is_wasm_demo() { Args::PlayDemo } else { Args::JustPlay })
     }
 }
 
