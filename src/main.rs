@@ -96,13 +96,38 @@ fn main() {
 }
 
 async fn amain(args: cli::Args) {
+    fn try_read_demo_movie(input_path: &std::path::Path) -> Result<demo::DemoMovie, String> {
+        let mut input_file = std::fs::File::open(input_path)
+            .map_err(|e| format!("Could not open input file {input_path:?}: {e}"))?;
+
+        let mut buf = Vec::with_capacity(1 << 20);
+        if let Err(e) = input_file.read_to_end(&mut buf) {
+            return Err(format!("Could not read input file {input_path:?}: {e}"));
+        };
+        drop(input_file);
+
+        demo::parse_movie(buf.as_ref())
+            .map_err(|e| format!("Problem in demo file {input_path:?}: {e}"))
+    }
+
     match args {
         cli::Args::ShowHelp => unreachable!(),
         cli::Args::JustPlay => {
             run_game(&mut input::MacroquadInput).await;
         }
-        cli::Args::PlayDemo => {
-            let mut device = demo::DemoPlayback::new(demo::make_default_demo_movie());
+        cli::Args::PlayDemo { input_path } => {
+            let input_movie = match input_path {
+                Some(path) => match try_read_demo_movie(&path) {
+                    Ok(movie) => movie,
+                    Err(e) => {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    }
+                },
+                None => demo::make_default_demo_movie(),
+            };
+
+            let mut device = demo::DemoPlayback::new(input_movie);
             run_game(&mut device).await;
         }
         cli::Args::RecordDemo { output_path } => {
@@ -127,29 +152,11 @@ async fn amain(args: cli::Args) {
             println!("Wrote {output_path:?} successfully!");
         }
         cli::Args::KeepRecordingDemo { input_path, output_path } => {
-            let input_movie = {
-                let input_file = std::fs::File::open(&input_path);
-                let mut input_file = match input_file {
-                    Ok(file) => file,
-                    Err(e) => {
-                        eprintln!("Could not open input file {input_path:?}: {e}");
-                        std::process::exit(1);
-                    }
-                };
-
-                let mut buf = Vec::with_capacity(1 << 20);
-                if let Err(e) = input_file.read_to_end(&mut buf) {
-                    eprintln!("Could not read input file {input_path:?}: {e}");
+            let input_movie = match try_read_demo_movie(&input_path) {
+                Ok(movie) => movie,
+                Err(e) => {
+                    eprintln!("{e}");
                     std::process::exit(1);
-                };
-                drop(input_file);
-
-                match demo::parse_movie(buf.as_ref()) {
-                    Ok(movie) => movie,
-                    Err(e) => {
-                        eprintln!("There's a problem with the demo file {input_path:?}: {e}");
-                        std::process::exit(1);
-                    }
                 }
             };
 
@@ -685,15 +692,9 @@ See the README of the project for more details.";
     pub enum Args {
         ShowHelp,
         JustPlay,
-        PlayDemo,
-        RecordDemo {
-            output_path: PathBuf,
-        },
-        #[allow(dead_code)]
-        KeepRecordingDemo {
-            input_path: PathBuf,
-            output_path: PathBuf,
-        },
+        PlayDemo { input_path: Option<PathBuf> },
+        RecordDemo { output_path: PathBuf },
+        KeepRecordingDemo { input_path: PathBuf, output_path: PathBuf },
     }
 
     #[cfg(not(target_family = "wasm"))]
@@ -729,7 +730,10 @@ See the README of the project for more details.";
 
         match subcommand.as_ref() {
             "play" => Ok(Args::JustPlay),
-            "demo" => Ok(Args::PlayDemo),
+            "demo" => {
+                let input_path = pargs.opt_value_from_os_str("--input-file", parse_path)?;
+                Ok(Args::PlayDemo { input_path })
+            }
             "record-demo" => {
                 let output_path = pargs.value_from_os_str("--output-file", parse_path)?;
                 Ok(Args::RecordDemo { output_path })
@@ -745,7 +749,11 @@ See the README of the project for more details.";
 
     #[cfg(target_family = "wasm")]
     pub fn parse_args() -> Result<Args, &'static str> {
-        Ok(if crate::wasm::is_wasm_demo() { Args::PlayDemo } else { Args::JustPlay })
+        Ok(if crate::wasm::is_wasm_demo() {
+            Args::PlayDemo { input_path: None }
+        } else {
+            Args::JustPlay
+        })
     }
 }
 

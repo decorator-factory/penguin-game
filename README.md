@@ -39,13 +39,13 @@ penguin-game
 
 Usage:
     penguin-game
-    penguin-game demo
+    penguin-game demo [--input-file <path>]
     penguin-game record-demo --output-file <path>
     penguin-game keep-recording-demo --input-file <path> --output-file <path>
 ```
 
 - `penguin-game` starts the game as expected
-- `penguin-game demo` starts the demo movie
+- `penguin-game demo` shows a demo movie; if no input is provided, the built-in demo movie (found in `demos/intended.demo`) is played
 - `penguin-game record-demo --output-file movie.demo` records a demo movie and outputs it to `movie.demo` (that file must not already exist). The demo is saved in a simple text format that you can tweak yourself.
 
     ```
