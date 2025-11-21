@@ -2,6 +2,7 @@ use crate::input::{
     Input,
     InputDevice,
 };
+use enumset::EnumSet;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum DemoAction {
@@ -46,37 +47,18 @@ pub struct DemoInput {
     movie: DemoMovie,
     action_index: usize,
     look_angle: f32,
-    // TODO: use enumset or something like that
-    is_left_on: bool,
-    is_right_on: bool,
-    is_shoot_on: bool,
+    inputs: EnumSet<Input>,
 }
 
 impl DemoInput {
     pub fn new(movie: DemoMovie) -> DemoInput {
-        DemoInput {
-            movie,
-            frame: 0,
-            action_index: 0,
-            look_angle: 0.0,
-            is_left_on: false,
-            is_right_on: false,
-            is_shoot_on: false,
-        }
+        DemoInput { movie, frame: 0, action_index: 0, look_angle: 0.0, inputs: EnumSet::new() }
     }
 
     fn handle_action(&mut self, action: DemoAction) {
         match action {
-            DemoAction::InputOn(input) => match input {
-                Input::Left => self.is_left_on = true,
-                Input::Right => self.is_right_on = true,
-                Input::Shoot => self.is_shoot_on = true,
-            },
-            DemoAction::InputOff(input) => match input {
-                Input::Left => self.is_left_on = false,
-                Input::Right => self.is_right_on = false,
-                Input::Shoot => self.is_shoot_on = false,
-            },
+            DemoAction::InputOn(input) => self.inputs |= input,
+            DemoAction::InputOff(input) => self.inputs -= input,
             DemoAction::SetLookAngle(angle) => self.look_angle = angle.to_radians(),
         }
     }
@@ -84,11 +66,7 @@ impl DemoInput {
 
 impl InputDevice for DemoInput {
     fn is_input_down(&self, input: Input) -> bool {
-        match input {
-            Input::Left => self.is_left_on,
-            Input::Right => self.is_right_on,
-            Input::Shoot => self.is_shoot_on,
-        }
+        self.inputs.contains(input)
     }
 
     fn look_angle(&self) -> f32 {

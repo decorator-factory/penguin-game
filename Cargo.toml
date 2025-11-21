@@ -19,3 +19,4 @@ parry2d = { version = "0.25", default-features = false, features = [
 ] }
 image = { version = "0.24", default-features = false, features = ["png"] }
 thiserror = "2"
+enumset = "=1.1.10"

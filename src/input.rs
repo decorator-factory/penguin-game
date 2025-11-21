@@ -1,6 +1,6 @@
 use macroquad::prelude as mq;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(enumset::EnumSetType, Debug)]
 pub enum Input {
     Left,
     Right,
