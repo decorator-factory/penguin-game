@@ -69,7 +69,7 @@ impl InputDevice for DemoInput {
         self.inputs.contains(input)
     }
 
-    fn look_angle(&self) -> f32 {
+    fn look_angle_radians(&self) -> f32 {
         self.look_angle
     }
 
@@ -89,6 +89,89 @@ impl InputDevice for DemoInput {
                 return;
             }
         }
+    }
+}
+
+// Demo recording
+
+/// Decorator for an input device that records inputs
+/// (in a smart way, to reduce the movie size) to eventually
+/// retrieve them as a DemoMovie.
+pub struct DemoRecorder<D> {
+    actions: Vec<(u64, DemoAction)>,
+    current_inputs: EnumSet<Input>,
+    wrapped: D,
+    current_frame: u64,
+    shot_cooldown: u64,
+}
+
+impl<D> DemoRecorder<D> {
+    pub fn new(wrapped: D) -> DemoRecorder<D> {
+        DemoRecorder {
+            actions: Vec::with_capacity(1024),
+            current_inputs: EnumSet::new(),
+            wrapped,
+            current_frame: 0,
+            shot_cooldown: 0,
+        }
+    }
+
+    pub fn into_movie(self) -> DemoMovie {
+        DemoMovie::new(self.actions.into_boxed_slice())
+    }
+}
+
+impl<D: InputDevice> InputDevice for DemoRecorder<D> {
+    fn next_frame(&mut self) {
+        // When recording a new frame, consult the parent device to see
+        // what changed and potentially record demo commands
+        let mut to_on = EnumSet::new();
+        let mut to_off = EnumSet::new();
+
+        for input in EnumSet::<Input>::all() {
+            let wrapped_on = self.wrapped.is_input_down(input);
+
+            if wrapped_on && !self.current_inputs.contains(input) {
+                to_on |= input;
+            }
+
+            if !wrapped_on && self.current_inputs.contains(input) {
+                to_off |= input;
+            }
+        }
+
+        if to_on.contains(Input::Shoot) || self.current_inputs.contains(Input::Shoot) {
+            if self.shot_cooldown == 0 {
+                let radians = self.wrapped.look_angle_radians();
+                self.actions
+                    .push((self.current_frame, DemoAction::SetLookAngle(radians.to_degrees())));
+                self.shot_cooldown = 16; // prevent spamming `look ...` when holding M1
+            // TODO: how do we keep this in sync with actual rocket cooldown?
+            } else {
+                self.shot_cooldown -= 1;
+            }
+        } else {
+            self.shot_cooldown = 0;
+        }
+
+        for input in to_on {
+            self.actions.push((self.current_frame, DemoAction::InputOn(input)));
+        }
+        for input in to_off {
+            self.actions.push((self.current_frame, DemoAction::InputOff(input)));
+        }
+
+        self.current_inputs = (self.current_inputs | to_on) - to_off;
+
+        self.current_frame += 1;
+    }
+
+    fn is_input_down(&self, input: Input) -> bool {
+        self.wrapped.is_input_down(input)
+    }
+
+    fn look_angle_radians(&self) -> f32 {
+        self.wrapped.look_angle_radians()
     }
 }
 
@@ -135,7 +218,7 @@ where
 }
 
 #[allow(dead_code)]
-pub fn unparse_movie(movie: &DemoMovie, w: &mut impl std::fmt::Write) -> std::fmt::Result {
+pub fn unparse_movie(movie: &DemoMovie, w: &mut impl std::io::Write) -> std::io::Result<()> {
     writeln!(w, "penguindemo-text-v0")?;
 
     fn format_input(inp: Input) -> &'static str {

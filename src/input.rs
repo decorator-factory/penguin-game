@@ -10,7 +10,7 @@ pub enum Input {
 pub trait InputDevice {
     fn next_frame(&mut self);
     fn is_input_down(&self, input: Input) -> bool;
-    fn look_angle(&self) -> f32;
+    fn look_angle_radians(&self) -> f32;
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -27,7 +27,7 @@ impl InputDevice for MacroquadInput {
         }
     }
 
-    fn look_angle(&self) -> f32 {
+    fn look_angle_radians(&self) -> f32 {
         let (sx, sy) = miniquad::window::screen_size();
         let (mx, my) = mq::mouse_position();
 

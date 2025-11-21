@@ -107,7 +107,27 @@ async fn amain() {
     // macroquad requires our future to be 'static, and DemoInput
     // is not owning, so we leak the device
     if is_demo {
-        run_game(&mut demo::DemoInput::new(demo::make_demo_movie()), banner).await;
+        let mut device = demo::DemoInput::new(demo::make_demo_movie());
+        run_game(&mut device, banner).await;
+    } else if let Some(demo_path) = demo_recording_file {
+        let file = std::fs::OpenOptions::new().write(true).create_new(true).open(&demo_path);
+        let mut file = match file {
+            Ok(file) => file,
+            Err(e) => {
+                eprintln!(
+                    "Could not open the destination file {demo_path:?} for demo recording: {e}"
+                );
+                return;
+            }
+        };
+
+        let mut device = demo::DemoRecorder::new(MacroquadInput);
+        run_game(&mut device, banner).await;
+        let movie = device.into_movie();
+
+        if let Err(e) = demo::unparse_movie(&movie, &mut file) {
+            eprintln!("Failed to write demo movie to {demo_path:?}: {e}");
+        };
     } else {
         run_game(&mut MacroquadInput, banner).await;
     };
@@ -143,7 +163,7 @@ async fn run_game(device: &mut impl InputDevice, banner: &str) {
             time_bank -= update_frame_time;
         }
 
-        graphics::draw_state(&state, device.look_angle());
+        graphics::draw_state(&state, device.look_angle_radians());
 
         // Debug information
         draw_text(&format!("FPS: {:03}, target_ups: {:04}", get_fps(), ups), 32., 32., 16., WHITE);
@@ -226,7 +246,7 @@ mod updates {
         // Spawn rocket
         if device.is_input_down(Input::Shoot) && state.penguin.rocket_cooldown == 0 {
             state.penguin.rocket_cooldown = ROCKET_SHOOT_COOLDOWN;
-            let dir = Vec2::from_angle(device.look_angle());
+            let dir = Vec2::from_angle(device.look_angle_radians());
             state.rockets.push(Rocket {
                 pos: state.penguin.pos,
                 vel: dir * ROCKET_SPEED,
