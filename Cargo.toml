@@ -10,7 +10,9 @@ opt-level = "s"
 strip = "symbols"
 
 [dependencies]
-glam = { version = "0.27", default-features = false }
+glam = { version = "0.27", default-features = false, features = [
+    "debug-glam-assert",
+] }
 nalgebra = { version = "0.34", default-features = false }
 arrayvec = "0.7"
 macroquad = "0.4"

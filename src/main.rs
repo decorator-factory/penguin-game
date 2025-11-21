@@ -27,7 +27,7 @@ struct Penguin {
     pos: Vec2,
     vel: Vec2,
     rocket_cooldown: u16,
-    coyote_time: u8,
+    is_grounded: bool,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -58,7 +58,7 @@ fn init_game_state() -> GameState {
     let level = build_level();
 
     let penguin =
-        Penguin { pos: level.start_pos(), vel: Vec2::ZERO, coyote_time: 0, rocket_cooldown: 0 };
+        Penguin { pos: level.start_pos(), vel: Vec2::ZERO, is_grounded: false, rocket_cooldown: 0 };
 
     GameState {
         penguin,
@@ -228,7 +228,7 @@ async fn run_game(device: &mut impl input::InputDevice) {
 
         // Debug information
         draw_text(&format!("FPS: {:03}, target_ups: {:04}", get_fps(), ups), 32., 32., 16., WHITE);
-        let debug_line = &format!("frame: {}, input: {}", frame, device.device_info());
+        let debug_line = &format!("frame: {}, input: {}, ", frame, device.device_info());
         draw_text(debug_line, 32., 48., 16., WHITE);
         let mut y = 64.0;
         for string in state.debug_strings.iter() {
@@ -266,15 +266,12 @@ mod updates {
 
     const ROCKET_SPEED: f32 = 3.0;
     const ROCKET_TTL: u16 = 240;
-    const ROCKET_SHOOT_COOLDOWN: u16 = 45;
+    const ROCKET_SHOOT_COOLDOWN: u16 = 60;
 
     const EXPLOSION_RADIUS: f32 = 48.0;
     const EXPLOSION_TTL: u16 = 10;
     const EXPLOSION_FORCE: f32 = 1.0;
 
-    // XXX: grounding detection is currently broken, but don't fix it yet to keep
-    //      the demo movie working
-    const COYOTE_DURATION: u8 = 12;
     const GRAVITY: f32 = 0.03;
     const MAX_GRAVITY_SPEED: f32 = 10.;
     const MAX_WALK_SPEED: f32 = 0.8;
@@ -325,10 +322,10 @@ mod updates {
         explosions: &mut [Explosion],
         mut debug: impl FnMut(String),
     ) {
-        let (accel, mut friction) = if penguin.coyote_time < COYOTE_DURATION {
-            (WALK_ACCEL_AIR, FRICTION_AIR)
-        } else {
+        let (accel, mut friction) = if penguin.is_grounded {
             (WALK_ACCEL_GROUND, FRICTION_GROUND)
+        } else {
+            (WALK_ACCEL_AIR, FRICTION_AIR)
         };
 
         if penguin.vel.x.abs() < 0.1 {
@@ -351,10 +348,7 @@ mod updates {
             }
         }
 
-        if penguin.coyote_time == COYOTE_DURATION {
-            penguin.vel.y = 0.;
-        }
-        if penguin.coyote_time < COYOTE_DURATION && penguin.vel.y < MAX_GRAVITY_SPEED {
+        if !penguin.is_grounded && penguin.vel.y < MAX_GRAVITY_SPEED {
             penguin.vel.y += GRAVITY;
         }
 
@@ -370,23 +364,21 @@ mod updates {
         let penguin_circle = Circle::new(penguin.pos.x, penguin.pos.y, PENGUIN_RADIUS);
         // TODO: I really have no idea what I'm doing when it comes to collision detection.
         //       Detecting if we're grounded seems super janky with polygons. Fix later please
-        let penguin_if_it_were_to_fall = penguin_circle.offset(vec2(0.0, GRAVITY));
+        let penguin_if_it_were_to_fall = penguin_circle.offset(penguin.vel + vec2(0.0, GRAVITY));
         let mut dv_for_grounded = Vec2::ZERO;
         let mut any_point_upwards = false;
 
         for rect in rects {
-            if let Some(dv) = circle_impacts_rect(penguin_circle.offset(penguin.vel), *rect)
-                && dv.length_squared() >= 0.001
-            {
-                penguin.pos += dv / 2.;
+            if let Some(dv) = circle_impacts_rect(penguin_circle.offset(penguin.vel), *rect) {
+                penguin.pos += dv;
 
-                let cancel_vec = penguin.vel.project_onto_normalized(dv.normalize_or_zero());
-                penguin.vel -= cancel_vec / 2.;
+                if dv.length_squared() > 1e-6 {
+                    let cancel_vec = penguin.vel.project_onto(dv);
+                    penguin.vel -= cancel_vec / 4.;
+                }
             }
 
-            if let Some(dv) = circle_impacts_rect(penguin_if_it_were_to_fall, *rect)
-                && dv.length_squared() >= 0.001
-            {
+            if let Some(dv) = circle_impacts_rect(penguin_if_it_were_to_fall, *rect) {
                 dv_for_grounded += dv;
 
                 let angle = dv.to_angle();
@@ -396,18 +388,16 @@ mod updates {
         }
 
         for poly in polygons {
-            if let Some(dv) = circle_impacts_convex(penguin_circle.offset(penguin.vel), poly)
-                && dv.length_squared() >= 0.001
-            {
-                penguin.pos += dv / 2.;
+            if let Some(dv) = circle_impacts_convex(penguin_circle.offset(penguin.vel), poly) {
+                penguin.pos += dv;
 
-                let cancel_vec = penguin.vel.project_onto_normalized(dv.normalize_or_zero());
-                penguin.vel -= cancel_vec / 2.;
+                if dv.length_squared() > 1e-6 {
+                    let cancel_vec = penguin.vel.project_onto(dv);
+                    penguin.vel -= cancel_vec / 4.;
+                }
             }
 
-            if let Some(dv) = circle_impacts_convex(penguin_if_it_were_to_fall, poly)
-                && dv.length_squared() >= 0.001
-            {
+            if let Some(dv) = circle_impacts_convex(penguin_if_it_were_to_fall, poly) {
                 dv_for_grounded += dv;
 
                 let angle = dv.to_angle();
@@ -418,14 +408,9 @@ mod updates {
 
         let is_grounded = {
             let dv_angle = dv_for_grounded.to_angle();
-            any_point_upwards || -PI / 2. - 0.34 < dv_angle && dv_angle < -PI / 2. + 0.34
+            any_point_upwards || (-PI / 2. - 0.34 < dv_angle && dv_angle < -PI / 2. + 0.34)
         };
-
-        if is_grounded {
-            penguin.coyote_time = COYOTE_DURATION;
-        } else {
-            penguin.coyote_time = penguin.coyote_time.saturating_sub(1);
-        }
+        penguin.is_grounded = is_grounded;
 
         debug(format!("speed: x={:+.2}, y={:+.2}", penguin.vel.x, penguin.vel.y));
 
@@ -795,7 +780,7 @@ fn build_level() -> levels::Level {
         &[
             // Arrow floor
             (vec2(0.0, 0.0), vec2(level_width, 32.0), tex_arrow_left.clone().into()),
-            // Leftmost helper stump,
+            // Leftmost helper stump
             (vec2(160.0, -48.0), vec2(48.0, 48.0), tex_wood.clone().into()),
             // Leftmost house wall
             (vec2(0.0, -360.0), vec2(64.0, 360.0), tex_bricks.clone().into()),

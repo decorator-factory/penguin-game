@@ -73,8 +73,6 @@ Usage:
 
 - Level editor. Unfortunately none of the existing open-source level editors are any good for this game.
 
-- Demo recording and proper demo movie format
-
 - Some sort of UI for selecting levels and congratulating the player when they win
 
 - Checkpoints. This is intended to be a difficult game, but not a "rage game". So you should be able to return to save your progress and/or return to a previous point in the level if you screw up badly.
