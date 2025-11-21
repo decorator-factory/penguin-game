@@ -41,9 +41,9 @@ impl DemoMovie {
     }
 }
 
-pub struct DemoInput<'a> {
+pub struct DemoInput {
     frame: u64,
-    movie: &'a DemoMovie,
+    movie: DemoMovie,
     action_index: usize,
     look_angle: f32,
     // TODO: use enumset or something like that
@@ -52,8 +52,8 @@ pub struct DemoInput<'a> {
     is_shoot_on: bool,
 }
 
-impl<'a> DemoInput<'a> {
-    pub fn new(movie: &'a DemoMovie) -> DemoInput<'a> {
+impl DemoInput {
+    pub fn new(movie: DemoMovie) -> DemoInput {
         DemoInput {
             movie,
             frame: 0,
@@ -82,7 +82,7 @@ impl<'a> DemoInput<'a> {
     }
 }
 
-impl<'a> InputDevice for DemoInput<'a> {
+impl InputDevice for DemoInput {
     fn is_input_down(&self, input: Input) -> bool {
         match input {
             Input::Left => self.is_left_on,

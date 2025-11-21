@@ -19,18 +19,6 @@ const UPS_FAST: f64 = 1200.;
 const PENGUIN_RADIUS: f32 = 24.0;
 const ROCKET_RADIUS: f32 = 4.0;
 
-fn window_conf() -> Conf {
-    Conf {
-        window_title: "penguin".to_string(),
-        window_width: 1280,
-        window_height: 720,
-        window_resizable: true,
-        sample_count: 2,
-        high_dpi: true,
-        ..Default::default()
-    }
-}
-
 #[derive(Copy, Clone, Debug)]
 struct Penguin {
     pos: Vec2,
@@ -78,10 +66,54 @@ fn init_game_state() -> GameState {
     }
 }
 
-#[macroquad::main(window_conf)]
-async fn main() {
-    rand::srand(miniquad::date::now() as u64);
+fn main() {
+    let conf = Conf {
+        window_title: "penguin".to_string(),
+        window_width: 1280,
+        window_height: 720,
+        window_resizable: true,
+        sample_count: 2,
+        high_dpi: true,
+        ..Default::default()
+    };
+    macroquad::Window::from_config(conf, amain());
+}
 
+async fn amain() {
+    #[cfg(target_family = "wasm")]
+    let demo_recording_file = None;
+    #[cfg(not(target_family = "wasm"))]
+    let demo_recording_file = std::env::var_os("PENGUIN_RECORD_FILE");
+
+    let is_demo = demo_recording_file.is_none() && {
+        #[cfg(target_family = "wasm")]
+        {
+            wasm::is_wasm_demo()
+        }
+        #[cfg(not(target_family = "wasm"))]
+        {
+            std::env::var_os("PENGUIN_DEMO").is_some_and(|s| !s.is_empty())
+        }
+    };
+
+    let banner = if is_demo {
+        "[DEMO] "
+    } else if demo_recording_file.is_some() {
+        "[RECORDING] "
+    } else {
+        ""
+    };
+
+    // macroquad requires our future to be 'static, and DemoInput
+    // is not owning, so we leak the device
+    if is_demo {
+        run_game(&mut demo::DemoInput::new(demo::make_demo_movie()), banner).await;
+    } else {
+        run_game(&mut MacroquadInput, banner).await;
+    };
+}
+
+async fn run_game(device: &mut impl InputDevice, banner: &str) {
     let mut state = init_game_state();
 
     let mut time_bank: f64 = 0.0;
@@ -89,24 +121,11 @@ async fn main() {
 
     let mut frame = 0u64;
 
-    #[cfg(target_family = "wasm")]
-    let is_demo = wasm::is_wasm_demo();
-    #[cfg(not(target_family = "wasm"))]
-    let is_demo = std::env::var_os("PENGUIN_DEMO").is_some_and(|s| !s.is_empty());
-
-    let demo_banner = if is_demo { "[DEMO] " } else { "" };
-
-    let demo_movie;
-    let device: &mut dyn InputDevice = if is_demo {
-        demo_movie = demo::make_demo_movie();
-        &mut demo::DemoInput::new(&demo_movie)
-    } else {
-        &mut MacroquadInput
-    };
-
     let mut speed_up = false;
 
-    loop {
+    // Handling the quit event manually allows us to save the demo recording
+    prevent_quit();
+    while !is_quit_requested() {
         if is_key_pressed(KeyCode::R) {
             speed_up = !speed_up;
         }
@@ -128,14 +147,13 @@ async fn main() {
 
         // Debug information
         draw_text(&format!("FPS: {:03}, target_ups: {:04}", get_fps(), ups), 32., 32., 16., WHITE);
-        draw_text(&format!("{}frame: {}", demo_banner, frame), 32., 48., 16., WHITE);
+        draw_text(&format!("{}frame: {}", banner, frame), 32., 48., 16., WHITE);
         let mut y = 64.0;
         for string in state.debug_strings.iter() {
             draw_text(string, 32.0, y, 16.0, WHITE);
             y += 16.0;
         }
-
-        next_frame().await
+        next_frame().await;
     }
 }
 
