@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::input::{
     Input,
     InputDevice,
@@ -23,7 +25,12 @@ impl std::fmt::Debug for DemoMovie {
 }
 
 impl DemoMovie {
+    /// If `actions` is empty, adds an `at 0: look 0` action
     pub fn new(actions: Box<[(u64, DemoAction)]>) -> DemoMovie {
+        if actions.is_empty() {
+            return DemoMovie::new(Box::new([(0, DemoAction::SetLookAngle(0.0))]));
+        }
+
         {
             // ensure frame numbers are non-decreasing
             let mut last_frame = 0u64;
@@ -36,13 +43,18 @@ impl DemoMovie {
         DemoMovie { actions }
     }
 
+    /// Last known frame number recorded in the movie
+    pub fn last_frame(&self) -> u64 {
+        self.actions.last().unwrap().0
+    }
+
     #[allow(dead_code)]
     pub fn actions(&self) -> &[(u64, DemoAction)] {
         &self.actions
     }
 }
 
-pub struct DemoInput {
+pub struct DemoPlayback {
     frame: u64,
     movie: DemoMovie,
     action_index: usize,
@@ -50,9 +62,9 @@ pub struct DemoInput {
     inputs: EnumSet<Input>,
 }
 
-impl DemoInput {
-    pub fn new(movie: DemoMovie) -> DemoInput {
-        DemoInput { movie, frame: 0, action_index: 0, look_angle: 0.0, inputs: EnumSet::new() }
+impl DemoPlayback {
+    pub fn new(movie: DemoMovie) -> DemoPlayback {
+        DemoPlayback { movie, frame: 0, action_index: 0, look_angle: 0.0, inputs: EnumSet::new() }
     }
 
     fn handle_action(&mut self, action: DemoAction) {
@@ -64,7 +76,7 @@ impl DemoInput {
     }
 }
 
-impl InputDevice for DemoInput {
+impl InputDevice for DemoPlayback {
     fn is_input_down(&self, input: Input) -> bool {
         self.inputs.contains(input)
     }
@@ -90,6 +102,10 @@ impl InputDevice for DemoInput {
             }
         }
     }
+
+    fn device_info(&'_ self) -> Cow<'_, str> {
+        Cow::Borrowed("demo")
+    }
 }
 
 // Demo recording
@@ -106,17 +122,17 @@ pub struct DemoRecorder<D> {
 }
 
 impl<D> DemoRecorder<D> {
-    pub fn new(wrapped: D) -> DemoRecorder<D> {
+    pub fn new(wrapped: D, starting_frame: u64) -> DemoRecorder<D> {
         DemoRecorder {
             actions: Vec::with_capacity(1024),
             current_inputs: EnumSet::new(),
             wrapped,
-            current_frame: 0,
+            current_frame: starting_frame,
             shot_cooldown: 0,
         }
     }
 
-    pub fn into_movie(self) -> DemoMovie {
+    pub fn collect_recording(self) -> DemoMovie {
         DemoMovie::new(self.actions.into_boxed_slice())
     }
 }
@@ -172,6 +188,10 @@ impl<D: InputDevice> InputDevice for DemoRecorder<D> {
 
     fn look_angle_radians(&self) -> f32 {
         self.wrapped.look_angle_radians()
+    }
+
+    fn device_info(&'_ self) -> Cow<'_, str> {
+        Cow::Owned(format!("demo-recorder ({})", self.wrapped.device_info()))
     }
 }
 
@@ -294,6 +314,13 @@ pub fn parse_movie(source: &[u8]) -> Result<DemoMovie, DemoParseError> {
             return wrap_err(line, E::InvalidSyntax("number is too large"));
         };
 
+        if frame >= u64::MAX / 4 {
+            // I don't think this is technically required, but frame counts this high
+            // are probably a typo or deliberately wrong input. So let's not panic further in
+            // the code
+            return wrap_err(line, E::InvalidSyntax("number is too large"));
+        }
+
         let Some(line) = expect_keyword(line, b":") else {
             return wrap_err(line, E::InvalidSyntax("expected colon (:)"));
         };
@@ -366,11 +393,11 @@ fn try_parse_action(line: &[u8]) -> Result<(&[u8], DemoAction), (&[u8], DemoPars
             let (numeric, line) =
                 split_while(line, |b| matches!(*b, b'0'..=b'9' | b'.' | b'-' | b'+'));
             if numeric.is_empty() {
-                return Err((line, E::InvalidSyntax("expected decimal number1")));
+                return Err((line, E::InvalidSyntax("expected decimal number")));
             }
             let numeric = unsafe { str::from_utf8_unchecked(numeric) }; // SAFETY: ASCII is valid UTF-8
             let Ok(angle) = str::parse::<f32>(numeric) else {
-                return Err((line, E::InvalidSyntax("expected decimal number2")));
+                return Err((line, E::InvalidSyntax("expected decimal number")));
             };
             (line, DemoAction::SetLookAngle(angle))
         }
@@ -393,11 +420,11 @@ fn try_parse_input(line: &[u8]) -> Option<(&[u8], Input)> {
 
 //-----
 
-pub fn make_demo_movie() -> DemoMovie {
-    parse_movie(DEMO_SOURCE).unwrap()
+pub fn make_default_demo_movie() -> DemoMovie {
+    parse_movie(DEFAULT_DEMO_SOURCE).unwrap()
 }
 
-static DEMO_SOURCE: &[u8] = include_bytes!("../demos/intended.demo");
+static DEFAULT_DEMO_SOURCE: &[u8] = include_bytes!("../demos/intended.demo");
 
 //-----
 

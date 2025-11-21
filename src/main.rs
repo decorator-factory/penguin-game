@@ -1,3 +1,8 @@
+use std::{
+    borrow::Cow,
+    io::Read,
+};
+
 use macroquad::prelude::*;
 use miniquad::TextureWrap;
 use parry2d::shape::ConvexPolygon;
@@ -10,11 +15,6 @@ mod wasm;
 
 #[cfg(not(target_family = "wasm"))]
 mod pico_args;
-
-use crate::input::{
-    InputDevice,
-    MacroquadInput,
-};
 
 const UPS_NORMAL: f64 = 240.;
 const UPS_FAST: f64 = 1200.;
@@ -81,6 +81,11 @@ fn main() {
     };
 
     let args = match cli::parse_args() {
+        Ok(cli::Args::ShowHelp) => {
+            // do not open the game window
+            eprintln!("{}", cli::HELP);
+            std::process::exit(1);
+        }
         Ok(args) => args,
         Err(e) => {
             eprintln!("Invalid command-line arguments: {e}");
@@ -92,15 +97,12 @@ fn main() {
 
 async fn amain(args: cli::Args) {
     match args {
-        cli::Args::ShowHelp => {
-            eprintln!("{}", cli::HELP);
-            std::process::exit(1);
-        }
+        cli::Args::ShowHelp => unreachable!(),
         cli::Args::JustPlay => {
-            run_game(&mut MacroquadInput).await;
+            run_game(&mut input::MacroquadInput).await;
         }
         cli::Args::PlayDemo => {
-            let mut device = demo::DemoInput::new(demo::make_demo_movie());
+            let mut device = demo::DemoPlayback::new(demo::make_default_demo_movie());
             run_game(&mut device).await;
         }
         cli::Args::RecordDemo { output_path } => {
@@ -108,28 +110,84 @@ async fn amain(args: cli::Args) {
             let mut file = match file {
                 Ok(file) => file,
                 Err(e) => {
-                    eprintln!(
-                        "Could not open the destination file {output_path:?} for demo recording: {e}"
-                    );
-                    return;
+                    eprintln!("Could not open output file {output_path:?}: {e}");
+                    std::process::exit(1);
                 }
             };
 
-            let mut device = demo::DemoRecorder::new(MacroquadInput);
+            let mut device = demo::DemoRecorder::new(input::MacroquadInput, 0);
             run_game(&mut device).await;
-            let movie = device.into_movie();
+            let movie = device.collect_recording();
 
             if let Err(e) = demo::unparse_movie(&movie, &mut file) {
                 eprintln!("Failed to write demo movie to {output_path:?}: {e}");
+                std::process::exit(1);
             };
+            drop(file);
+            println!("Wrote {output_path:?} successfully!");
         }
-        cli::Args::KeepRecordingDemo { .. } => {
-            unimplemented!("--keep-recording-demo is under construction :-(")
+        cli::Args::KeepRecordingDemo { input_path, output_path } => {
+            let input_movie = {
+                let input_file = std::fs::File::open(&input_path);
+                let mut input_file = match input_file {
+                    Ok(file) => file,
+                    Err(e) => {
+                        eprintln!("Could not open input file {input_path:?}: {e}");
+                        std::process::exit(1);
+                    }
+                };
+
+                let mut buf = Vec::with_capacity(1 << 20);
+                if let Err(e) = input_file.read_to_end(&mut buf) {
+                    eprintln!("Could not read input file {input_path:?}: {e}");
+                    std::process::exit(1);
+                };
+                drop(input_file);
+
+                match demo::parse_movie(buf.as_ref()) {
+                    Ok(movie) => movie,
+                    Err(e) => {
+                        eprintln!("There's a problem with the demo file {input_path:?}: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            };
+
+            let output_file =
+                std::fs::OpenOptions::new().write(true).create_new(true).open(&output_path);
+            let mut output_file = match output_file {
+                Ok(file) => file,
+                Err(e) => {
+                    eprintln!("Could not open output file {output_path:?}: {e}");
+                    std::process::exit(1);
+                }
+            };
+
+            let mut device = {
+                let threshold_frame = input_movie.last_frame() + 1;
+                let playback = demo::DemoPlayback::new(input_movie);
+                let recorder = demo::DemoRecorder::new(input::MacroquadInput, threshold_frame);
+                input::ComposedInput::new(
+                    playback,
+                    recorder,
+                    threshold_frame,
+                    (Cow::Borrowed("playback"), Cow::Borrowed("recording")),
+                )
+            };
+            run_game(&mut device).await;
+            let output_movie = device.into_inner().1.collect_recording();
+
+            if let Err(e) = demo::unparse_movie(&output_movie, &mut output_file) {
+                eprintln!("Failed to write demo movie to {output_path:?}: {e}");
+                std::process::exit(1);
+            };
+            drop(output_file);
+            println!("Wrote {output_path:?} successfully!");
         }
     }
 }
 
-async fn run_game(device: &mut impl InputDevice) {
+async fn run_game(device: &mut impl input::InputDevice) {
     let mut state = init_game_state();
 
     let mut time_bank: f64 = 0.0;
@@ -163,7 +221,8 @@ async fn run_game(device: &mut impl InputDevice) {
 
         // Debug information
         draw_text(&format!("FPS: {:03}, target_ups: {:04}", get_fps(), ups), 32., 32., 16., WHITE);
-        draw_text(&format!("frame: {}", frame), 32., 48., 16., WHITE);
+        let debug_line = &format!("frame: {}, input: {}", frame, device.device_info());
+        draw_text(debug_line, 32., 48., 16., WHITE);
         let mut y = 64.0;
         for string in state.debug_strings.iter() {
             draw_text(string, 32.0, y, 16.0, WHITE);
