@@ -502,7 +502,7 @@ mod parse_tests {
     pub fn test_empty_movie() {
         let source = b"penguindemo-text-v0\n";
         let movie = parse_movie(source).unwrap();
-        assert_eq!(movie.actions.as_ref(), []);
+        assert_eq!(movie.actions.as_ref(), [(0, DemoAction::SetLookAngle(0.0))]);
     }
 
     #[test]
