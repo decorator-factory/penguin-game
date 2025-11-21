@@ -681,7 +681,7 @@ penguin-game
 
 Usage:
     penguin-game
-    penguin-game demo
+    penguin-game demo [--input-file <path>]
     penguin-game record-demo --output-file <path>
     penguin-game keep-recording-demo --input-file <path> --output-file <path>
 
