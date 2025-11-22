@@ -410,11 +410,12 @@ fn try_parse_input(line: &[u8]) -> Option<(&[u8], Input)> {
 
 //-----
 
-pub fn make_default_demo_movie() -> DemoMovie {
-    parse_movie(DEFAULT_DEMO_SOURCE).unwrap()
-}
-
 static DEFAULT_DEMO_SOURCE: &[u8] = include_bytes!("../demos/intended.demo");
+
+pub fn make_default_demo_movie() -> DemoMovie {
+    parse_movie(DEFAULT_DEMO_SOURCE)
+        .unwrap_or_else(|e| panic!("the demo movie in '../demos/intended.demo' is malformed: {e}"))
+}
 
 //-----
 
