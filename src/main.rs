@@ -217,6 +217,15 @@ async fn run_game(device: &mut impl input::InputDevice) {
         last_time = now;
         let ups = if speed_up { UPS_FAST } else { UPS_NORMAL };
         let update_frame_time = 1.0 / ups;
+        if time_bank >= update_frame_time * 60.0 {
+            // This can happen due to several reasons:
+            // - lag spikes in other programs
+            // - using very high UPS (like when pressing R) using a debug build and a low end device
+            // - on Linux I only get one update per second when the application is minimized
+            // and we don't want to run a million updates in a single frame
+            time_bank = update_frame_time;
+        }
+
         while time_bank >= update_frame_time {
             device.next_frame();
             frame += 1;
