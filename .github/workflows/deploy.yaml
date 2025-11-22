@@ -25,6 +25,9 @@ jobs:
       - name: Output rust version
         run: rustup --version
 
+      - name: Download wasm toolchain
+        run: rustup target add wasm32-unknown-unknown
+
       - name: Lint with clippy on x86_64
         run: cargo clippy --all-targets --target x86_64-unknown-linux-gnu
 
