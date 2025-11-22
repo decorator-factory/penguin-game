@@ -269,7 +269,7 @@ mod updates {
     const ROCKET_SHOOT_COOLDOWN: u16 = 60;
 
     const EXPLOSION_RADIUS: f32 = 48.0;
-    const EXPLOSION_TTL: u16 = 10;
+    const EXPLOSION_TTL: u16 = 8;
     const EXPLOSION_FORCE: f32 = 1.0;
 
     const GRAVITY: f32 = 0.03;
@@ -285,13 +285,12 @@ mod updates {
     pub fn fixed_update(state: &mut GameState, device: &dyn InputDevice) {
         state.debug_strings.clear();
 
+        update_ttl(&mut state.rockets, &mut state.explosions);
         update_rockets_movement(
             &mut state.rockets,
-            &mut state.explosions,
             state.level.rect_colliders(),
             state.level.poly_colliders(),
         );
-        update_explosions(&mut state.explosions);
         update_penguin_movement(
             device,
             &mut state.penguin,
@@ -362,11 +361,9 @@ mod updates {
         }
 
         let penguin_circle = Circle::new(penguin.pos.x, penguin.pos.y, PENGUIN_RADIUS);
-        // TODO: I really have no idea what I'm doing when it comes to collision detection.
-        //       Detecting if we're grounded seems super janky with polygons. Fix later please
         let penguin_if_it_were_to_fall = penguin_circle.offset(penguin.vel + vec2(0.0, GRAVITY));
-        let mut dv_for_grounded = Vec2::ZERO;
-        let mut any_point_upwards = false;
+        let mut dv_for_grounded = Vec2::ZERO; // how much we moved, as far as grounding logic is concerned
+        let mut any_delta_points_upwards = false; // has any of the collisions pushed us upwards?
 
         for rect in rects {
             if let Some(dv) = circle_impacts_rect(penguin_circle.offset(penguin.vel), *rect) {
@@ -382,8 +379,8 @@ mod updates {
                 dv_for_grounded += dv;
 
                 let angle = dv.to_angle();
-                any_point_upwards =
-                    any_point_upwards || (-PI / 2. - 0.34 < angle && angle < -PI / 2. + 0.34);
+                any_delta_points_upwards = any_delta_points_upwards
+                    || (-PI / 2. - 0.34 < angle && angle < -PI / 2. + 0.34);
             }
         }
 
@@ -401,14 +398,14 @@ mod updates {
                 dv_for_grounded += dv;
 
                 let angle = dv.to_angle();
-                any_point_upwards =
-                    any_point_upwards || (-PI / 2. - 0.67 < angle && angle < -PI / 2. + 0.67);
+                any_delta_points_upwards = any_delta_points_upwards
+                    || (-PI / 2. - 0.67 < angle && angle < -PI / 2. + 0.67);
             }
         }
 
         let is_grounded = {
             let dv_angle = dv_for_grounded.to_angle();
-            any_point_upwards || (-PI / 2. - 0.34 < dv_angle && dv_angle < -PI / 2. + 0.34)
+            any_delta_points_upwards || (-PI / 2. - 0.34 < dv_angle && dv_angle < -PI / 2. + 0.34)
         };
         penguin.is_grounded = is_grounded;
 
@@ -417,72 +414,58 @@ mod updates {
         penguin.pos += penguin.vel;
     }
 
-    fn update_rockets_movement(
-        rockets: &mut Vec<Rocket>,
-        explosions: &mut Vec<Explosion>,
-        rects: &[Rect],
-        polygons: &[ConvexPolygon],
-    ) {
-        let mut removed_rocket_idxs = ArrayVec::<(usize, Vec2), 8>::new();
-
+    fn update_rockets_movement(rockets: &mut [Rocket], rects: &[Rect], polygons: &[ConvexPolygon]) {
         for rocket in rockets.iter_mut() {
             rocket.pos += rocket.vel;
         }
 
-        for rocket in rockets.iter_mut() {
-            rocket.ttl -= 1;
-        }
-
-        'outer: for (idx, rocket) in rockets.iter_mut().enumerate() {
-            if rocket.ttl == 0 {
-                removed_rocket_idxs.push((idx, rocket.pos));
-            } else {
-                let circle = Circle::new(rocket.pos.x, rocket.pos.y, ROCKET_RADIUS);
-                for &rect in rects {
-                    if let Some(contact) = circle_impacts_rect_alt(circle, rect) {
-                        let pos = vec2(contact.point2.x, contact.point2.y);
-                        removed_rocket_idxs.push((idx, pos));
-                        continue 'outer;
-                    }
+        'outer: for rocket in rockets.iter_mut() {
+            let circle = Circle::new(rocket.pos.x, rocket.pos.y, ROCKET_RADIUS);
+            for &rect in rects {
+                if circle_impacts_rect_alt(circle, rect).is_some() {
+                    rocket.ttl = 0;
+                    continue 'outer;
                 }
+            }
 
-                for poly in polygons {
-                    if let Some(contact) = circle_impacts_convex_alt(circle, poly) {
-                        let pos = vec2(contact.point2.x, contact.point2.y);
-                        removed_rocket_idxs.push((idx, pos));
-                        continue 'outer;
-                    }
+            for poly in polygons {
+                if circle_impacts_convex_alt(circle, poly).is_some() {
+                    rocket.ttl = 0;
+                    continue 'outer;
                 }
             }
         }
+    }
 
-        for (idx, explosion_pos) in removed_rocket_idxs.into_iter().rev() {
-            rockets.swap_remove(idx);
+    /// Update ticks on rockets and explosions. Delete expired rockets and explosions.
+    /// This will also spawn extra explosions created by dying rockets.
+    fn update_ttl(rockets: &mut Vec<Rocket>, explosions: &mut Vec<Explosion>) {
+        for rocket in rockets.iter_mut() {
+            rocket.ttl = rocket.ttl.saturating_sub(1);
+        }
+        for explosion in explosions.iter_mut() {
+            explosion.ttl = explosion.ttl.saturating_sub(1);
+        }
+
+        let mut new_explosions = ArrayVec::<Vec2, 16>::new();
+        rockets.retain_mut(|rocket| {
+            if rocket.ttl == 0 {
+                _ = new_explosions.try_push(rocket.pos);
+            }
+            rocket.ttl != 0
+        });
+
+        explosions.retain_mut(|exp| exp.ttl != 0);
+
+        explosions.reserve_exact(new_explosions.len());
+        for pos in new_explosions {
             explosions.push(Explosion {
-                pos: explosion_pos,
+                pos,
                 radius: EXPLOSION_RADIUS,
                 ttl: EXPLOSION_TTL,
                 initial_ttl: EXPLOSION_TTL,
                 force: EXPLOSION_FORCE,
             });
-        }
-    }
-
-    fn update_explosions(explosions: &mut Vec<Explosion>) {
-        let mut removed_idxs = ArrayVec::<_, 8>::new();
-
-        for (idx, exp) in explosions.iter().enumerate() {
-            if exp.ttl == 0 {
-                removed_idxs.push(idx);
-            }
-        }
-
-        for exp in explosions.iter_mut() {
-            exp.ttl = exp.ttl.wrapping_sub(1); // if this wraps, then it will be removed anyway!
-        }
-
-        for &idx in removed_idxs.iter().rev() {
-            explosions.swap_remove(idx);
         }
     }
 

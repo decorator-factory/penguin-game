@@ -1,5 +1,7 @@
 penguindemo-text-v0
 
+# TODO: demo is invalid
+
 # This demo records the intended strategy the clear the level.
 # It was recorded by using `penguin-demo record-demo` and `penguin-demo keep-recording-demo`
 # and then editing the demo files a little bit.
