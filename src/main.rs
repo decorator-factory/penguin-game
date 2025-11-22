@@ -104,8 +104,6 @@ async fn amain(args: cli::Args) {
         if let Err(e) = input_file.read_to_end(&mut buf) {
             return Err(format!("Could not read input file {}: {e}", input_path.display()));
         }
-        drop(input_file);
-
         demo::parse_movie(buf.as_ref())
             .map_err(|e| format!("Problem in demo file {}: {e}", input_path.display()))
     }
@@ -148,6 +146,7 @@ async fn amain(args: cli::Args) {
                 eprintln!("Failed to write demo movie to {}: {e}", output_path.display());
                 std::process::exit(1);
             }
+            #[cfg_attr(target_family = "wasm", allow(clippy::drop_non_drop))]
             drop(file);
             println!("Wrote {} successfully!", output_path.display());
         }
@@ -188,6 +187,7 @@ async fn amain(args: cli::Args) {
                 eprintln!("Failed to write demo movie to {}: {e}", output_path.display());
                 std::process::exit(1);
             }
+            #[cfg_attr(target_family = "wasm", allow(clippy::drop_non_drop))]
             drop(output_file);
             println!("Wrote {} successfully!", output_path.display());
         }
@@ -197,11 +197,12 @@ async fn amain(args: cli::Args) {
 async fn run_game(device: &mut impl input::InputDevice) {
     let mut state = init_game_state();
 
+    macroquad::logging::info!("Initialized penguin-game state!");
+
     let mut time_bank: f64 = 0.0;
     let mut last_time = get_time();
 
     let mut frame = 0u64;
-
     let mut speed_up = false;
 
     // Handling the quit event manually allows us to save the demo recording
@@ -210,7 +211,6 @@ async fn run_game(device: &mut impl input::InputDevice) {
         if is_key_pressed(KeyCode::R) {
             speed_up = !speed_up;
         }
-
         // Frame debt logic
         let now = get_time();
         time_bank += now - last_time;
@@ -223,6 +223,7 @@ async fn run_game(device: &mut impl input::InputDevice) {
             // - using very high UPS (like when pressing R) using a debug build and a low end device
             // - on Linux I only get one update per second when the application is minimized
             // and we don't want to run a million updates in a single frame
+            macroquad::logging::warn!("time bank bankrupcy");
             time_bank = update_frame_time;
         }
 
@@ -246,6 +247,8 @@ async fn run_game(device: &mut impl input::InputDevice) {
         }
         next_frame().await;
     }
+
+    macroquad::logging::warn!("Closing penguin-game window");
 }
 
 mod updates {
@@ -723,6 +726,7 @@ See the README of the project for more details.";
     }
 
     #[cfg(target_family = "wasm")]
+    #[allow(clippy::unnecessary_wraps)]
     pub fn parse_args() -> Result<Args, &'static str> {
         Ok(if crate::wasm::is_wasm_demo() {
             Args::PlayDemo { input_path: None }

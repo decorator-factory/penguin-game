@@ -15,8 +15,8 @@ glam = { version = "0.27", default-features = false, features = [
 ] }
 nalgebra = { version = "0.34", default-features = false }
 arrayvec = "0.7"
-macroquad = "0.4"
-miniquad = "0.4" # should be pinned by macroquad
+macroquad = { version = "=0.4.14", features = ["backtrace"] }
+miniquad = { version = "=0.4.8", features = ["log-impl"] }
 parry2d = { version = "0.25", default-features = false, features = [
     "required-features",
     "alloc",

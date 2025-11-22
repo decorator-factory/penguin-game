@@ -22,14 +22,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          target: wasm32-unknown-unknown
-          override: true
+      - name: Output rust version
+        run: rustup --version
 
-      - name: Build
+      - name: Lint with clippy on x86_64
+        run: cargo clippy --all-targets --target x86_64-unknown-linux-gnu
+
+      - name: Lint with clippy on wasm
+        run: cargo clippy --all-targets --target wasm32-unknown-unknown
+
+      - name: Test
+        run: cargo test
+
+      - name: Build Rust executable
         run: cargo build --release --target wasm32-unknown-unknown
 
       - name: Prepare Deployment Directory
@@ -37,10 +42,16 @@ jobs:
           cp -r ./html ./github-pages
           cp ./target/wasm32-unknown-unknown/release/penguin-game.wasm ./github-pages/penguin-game.wasm
 
+      - name: Minify JavaScript
+        run: |
+          npm i @minify-js/node@0.6.0
+          minify-js ./github-pages/miniquad.js
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3.0.1
         with:
           path: ./github-pages
+
   deploy:
     environment:
       name: github-pages

@@ -1,42 +1,43 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Penguin Game</title>
+        <style>
+            html,
+            body,
+            #penguin-game-canvas {
+                margin: 0;
+                padding: 0;
+                width: 100%;
+                height: 100%;
+                overflow: hidden;
+                position: absolute;
+                background: black;
+                z-index: 0;
+            }
 
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Penguin Game</title>
-  <style>
-    html,
-    body,
-    #glcanvas {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      position: absolute;
-      background: black;
-      z-index: 0;
-    }
+            #penguin-game-canvas {
+                /* Prevent the user from being able to drag the canvas, which can happen with Ctrl+A */
+                user-select: none;
+            }
+        </style>
+    </head>
 
-    #glcanvas {
-      /* Prevent the user from being able to drag the canvas, which can happen with Ctrl+A */
-      user-select: none;
-    }
-  </style>
-</head>
-
-<body>
-  <canvas id="glcanvas" tabindex="1"></canvas>
-  <!--
-    The bundle uses global variables and doesn't offer anything for isolation, which is kinda
-    cringe, but it's not a big deal if the entire site is just for the game.
-    -->
-  <script src="./mq_js_bundle.js"></script>
-  <script>
-    importObject.env.is_wasm_demo = () => document.location.hash == "#demo"
-    load("penguin-game.wasm");
-  </script>
-</body>
-
+    <body>
+        <canvas id="penguin-game-canvas" tabindex="1"></canvas>
+        <script>
+            import("./miniquad.js").then((miniquad) => {
+                console.log("minquad.js loaded!");
+                miniquad.set_canvas(
+                    document.getElementById("penguin-game-canvas"),
+                );
+                miniquad.define_ffi_function("is_wasm_demo", function () {
+                    return document.location.hash == "#demo";
+                });
+                miniquad.load("penguin-game.wasm");
+            });
+        </script>
+    </body>
 </html>
