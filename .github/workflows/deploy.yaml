@@ -47,8 +47,14 @@ jobs:
 
       - name: Minify JavaScript
         run: |
-          npm i @minify-js/node@0.6.0
-          minify-js ./github-pages/miniquad.js
+          npm link @swc/core  # already installed in Github Actions :^)
+          node <<EOF
+            const fs = require("node:fs");
+            const filename = "./github-pages/miniquad.js";
+            const source = fs.readFileSync(filename);
+            const minified = require("@swc/core").minifySync(source, {module: true}).code;
+            fs.writeFileSync(filename, minified);
+          EOF
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3.0.1
