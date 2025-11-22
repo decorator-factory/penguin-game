@@ -58,7 +58,7 @@ impl Level {
             );
         }
 
-        Level { start_pos, graphics, rect_colliders, poly_colliders }
+        Level { graphics, rect_colliders, poly_colliders, start_pos }
     }
 
     pub fn insert_graphics(
@@ -79,6 +79,8 @@ impl Level {
     }
 
     pub fn insert_colliders(&mut self, rects: &[(Vec2, Vec2)], polygons: &[&[Vec2]]) {
+
+
         for (pos, wh) in rects {
             self.rect_colliders.push(Rect { x: pos.x, y: pos.y, w: wh.x, h: wh.y });
         }

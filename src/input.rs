@@ -43,7 +43,7 @@ impl InputDevice for MacroquadInput {
     }
 }
 
-/// InputDevice used to play back a demo movie and then record
+/// [`InputDevice`] used to play back a demo movie and then record
 pub struct ComposedInput<A, B> {
     first: A,
     second: B,

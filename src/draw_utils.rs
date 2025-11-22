@@ -26,8 +26,10 @@ pub fn draw_textured_rect(pos: Vec2, wh: Vec2, opts: impl Into<DrawOpts>) {
 }
 
 pub fn draw_textured_poly(points: &[Vec2], opts: impl Into<DrawOpts>) {
-    let ctx = unsafe { get_internal_gl() };
-    let gl = ctx.quad_gl;
+    debug_assert!(points.len() < 1024, "polygon is suspiciously large");
+
+    // SAFETY: internal context does not escape this function
+    let gl = unsafe { get_internal_gl() }.quad_gl;
 
     // can't use ArrayVec because `N * 3` isn't a thing. Boo
     // https://github.com/rust-lang/rust/issues/76560
@@ -51,6 +53,7 @@ pub fn draw_textured_poly(points: &[Vec2], opts: impl Into<DrawOpts>) {
         let (u, v) = (dx / texture.width(), dy / texture.height());
         vertices.push(Vertex::new(point.x, point.y, 0., u, v, color));
 
+        #[allow(clippy::cast_possible_truncation, reason = "see debug_assert")]
         if i != 0 && i != points.len() - 1 {
             indices.extend_from_slice(&[0, i as u16, i as u16 + 1]);
         }
@@ -61,7 +64,7 @@ pub fn draw_textured_poly(points: &[Vec2], opts: impl Into<DrawOpts>) {
     gl.geometry(&vertices, &indices);
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "this function is useful for debugging")]
 pub fn draw_arrow(start: Vec2, end: Vec2, color: Color) {
     let delta = (start - end).normalize_or_zero();
 

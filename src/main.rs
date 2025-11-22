@@ -98,16 +98,16 @@ fn main() {
 async fn amain(args: cli::Args) {
     fn try_read_demo_movie(input_path: &std::path::Path) -> Result<demo::DemoMovie, String> {
         let mut input_file = std::fs::File::open(input_path)
-            .map_err(|e| format!("Could not open input file {input_path:?}: {e}"))?;
+            .map_err(|e| format!("Could not open input file {}: {e}", input_path.display()))?;
 
         let mut buf = Vec::with_capacity(1 << 20);
         if let Err(e) = input_file.read_to_end(&mut buf) {
-            return Err(format!("Could not read input file {input_path:?}: {e}"));
-        };
+            return Err(format!("Could not read input file {}: {e}", input_path.display()));
+        }
         drop(input_file);
 
         demo::parse_movie(buf.as_ref())
-            .map_err(|e| format!("Problem in demo file {input_path:?}: {e}"))
+            .map_err(|e| format!("Problem in demo file {}: {e}", input_path.display()))
     }
 
     match args {
@@ -135,7 +135,7 @@ async fn amain(args: cli::Args) {
             let mut file = match file {
                 Ok(file) => file,
                 Err(e) => {
-                    eprintln!("Could not open output file {output_path:?}: {e}");
+                    eprintln!("Could not open output file {}: {e}", output_path.display());
                     std::process::exit(1);
                 }
             };
@@ -145,11 +145,11 @@ async fn amain(args: cli::Args) {
             let movie = device.collect_recording();
 
             if let Err(e) = demo::unparse_movie(&movie, &mut file) {
-                eprintln!("Failed to write demo movie to {output_path:?}: {e}");
+                eprintln!("Failed to write demo movie to {}: {e}", output_path.display());
                 std::process::exit(1);
-            };
+            }
             drop(file);
-            println!("Wrote {output_path:?} successfully!");
+            println!("Wrote {} successfully!", output_path.display());
         }
         cli::Args::KeepRecordingDemo { input_path, output_path } => {
             let input_movie = match try_read_demo_movie(&input_path) {
@@ -165,13 +165,13 @@ async fn amain(args: cli::Args) {
             let mut output_file = match output_file {
                 Ok(file) => file,
                 Err(e) => {
-                    eprintln!("Could not open output file {output_path:?}: {e}");
+                    eprintln!("Could not open output file {}: {e}", output_path.display());
                     std::process::exit(1);
                 }
             };
 
             let mut device = {
-                let threshold_frame = input_movie.last_frame() + 1;
+                let threshold_frame = input_movie.last_frame().unwrap_or(0) + 1;
                 let playback = demo::DemoPlayback::new(input_movie);
                 let recorder = demo::DemoRecorder::new(input::MacroquadInput, threshold_frame);
                 input::ComposedInput::new(
@@ -185,11 +185,11 @@ async fn amain(args: cli::Args) {
             let output_movie = device.into_inner().1.collect_recording();
 
             if let Err(e) = demo::unparse_movie(&output_movie, &mut output_file) {
-                eprintln!("Failed to write demo movie to {output_path:?}: {e}");
+                eprintln!("Failed to write demo movie to {}: {e}", output_path.display());
                 std::process::exit(1);
-            };
+            }
             drop(output_file);
-            println!("Wrote {output_path:?} successfully!");
+            println!("Wrote {} successfully!", output_path.display());
         }
     }
 }
@@ -231,7 +231,7 @@ async fn run_game(device: &mut impl input::InputDevice) {
         let debug_line = &format!("frame: {}, input: {}, ", frame, device.device_info());
         draw_text(debug_line, 32., 48., 16., WHITE);
         let mut y = 64.0;
-        for string in state.debug_strings.iter() {
+        for string in &state.debug_strings {
             draw_text(string, 32.0, y, 16.0, WHITE);
             y += 16.0;
         }
@@ -254,6 +254,7 @@ mod updates {
         InputDevice,
     };
     use arrayvec::ArrayVec;
+    use core::f32::consts::PI;
     use glam::{
         Vec2,
         vec2,
@@ -262,7 +263,6 @@ mod updates {
         Circle,
         Rect,
     };
-    use std::f32::consts::PI;
 
     const ROCKET_SPEED: f32 = 3.0;
     const ROCKET_TTL: u16 = 240;
@@ -414,7 +414,7 @@ mod updates {
 
         debug(format!("speed: x={:+.2}, y={:+.2}", penguin.vel.x, penguin.vel.y));
 
-        penguin.pos += penguin.vel
+        penguin.pos += penguin.vel;
     }
 
     fn update_rockets_movement(
@@ -488,10 +488,9 @@ mod updates {
 
     /// If an intersection occurs, return how much to move the circle
     fn circle_impacts_rect(circle: Circle, rect: Rect) -> Option<Vec2> {
-        circle_impacts_rect_alt(circle, rect).map(|c| {
-            let delta = c.point1 - c.point2;
-            vec2(delta.x, delta.y)
-        })
+        let contact = circle_impacts_rect_alt(circle, rect)?;
+        let delta = contact.point1 - contact.point2;
+        Some(vec2(delta.x, delta.y))
     }
 
     /// Circle is the "second object"
@@ -516,11 +515,10 @@ mod updates {
 
     /// If an intersection occurs, return how much to move the circle
     fn circle_impacts_convex(circle: Circle, poly: &ConvexPolygon) -> Option<Vec2> {
-        circle_impacts_convex_alt(circle, poly).and_then(|c| {
-            let delta = c.point1 - c.point2;
-            let rv = vec2(delta.x, delta.y);
-            rv.is_finite().then_some(rv)
-        })
+        let contact = circle_impacts_convex_alt(circle, poly)?;
+        let delta = contact.point1 - contact.point2;
+        let rv = vec2(delta.x, delta.y);
+        rv.is_finite().then_some(rv)
     }
 
     /// Circle is the "second object"
@@ -544,12 +542,10 @@ mod updates {
         let delta = penguin.point() - exp.point();
         let dist = delta.length();
 
-        if dist > 0.001 && dist <= penguin.radius() + exp.radius() {
+        (dist > 0.001 && dist <= penguin.radius() + exp.radius()).then(|| {
             let strength = 1.0 - dist / (penguin.radius() + exp.radius());
-            Some((delta / dist, strength))
-        } else {
-            None
-        }
+            (delta / dist, strength)
+        })
     }
 }
 
@@ -611,7 +607,7 @@ mod graphics {
 
     fn draw_explosion(Explosion { pos, radius, ttl, initial_ttl, .. }: Explosion) {
         draw_circle(pos.x, pos.y, radius, RED);
-        draw_circle(pos.x, pos.y, (radius - 1.) * (ttl as f32) / (initial_ttl as f32), WHITE);
+        draw_circle(pos.x, pos.y, (radius - 1.) * f32::from(ttl) / f32::from(initial_ttl), WHITE);
     }
 
     const PENGUINGRAY: Color = Color::new(0.15, 0.15, 0.25, 1.0);
@@ -621,10 +617,11 @@ mod graphics {
         let (cx, cy) = (pos.x, pos.y);
 
         if vel.length() > 2.0 {
-            let steps = ((vel.length() - 1.5) / 0.5) as u16;
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let steps = ((vel.length() - 1.5) / 0.5).min(100.0) as u16;
             for i in 0..steps {
-                let fade_factor = 1. - i as f32 / steps as f32;
-                let dpos = pos - vel.normalize() * (1. + i as f32) * 4.0;
+                let fade_factor = 1. - f32::from(i) / f32::from(steps);
+                let dpos = pos - vel.normalize() * (1. + f32::from(i)) * 4.0;
                 draw_circle_lines(
                     dpos.x,
                     dpos.y,
@@ -684,17 +681,18 @@ See the README of the project for more details.";
 
     #[cfg(not(target_family = "wasm"))]
     #[derive(thiserror::Error, Debug)]
-    pub enum Error {
+    pub enum CliError {
         #[error("Expected a subcommand")]
         ExpectedSubcommand,
         #[error("Unknown subcommand: {0}")]
         UnknownSubcommand(String),
         #[error("{0}")]
-        PicoArgs(#[from] crate::pico_args::Error),
+        PicoArgs(#[from] crate::pico_args::PicoError),
     }
 
     #[cfg(not(target_family = "wasm"))]
-    pub fn parse_args() -> Result<Args, Error> {
+    pub fn parse_args() -> Result<Args, CliError> {
+        #[allow(clippy::unnecessary_wraps)]
         fn parse_path(s: &std::ffi::OsStr) -> Result<PathBuf, &'static str> {
             Ok(s.into())
         }
@@ -709,7 +707,7 @@ See the README of the project for more details.";
             if pargs.0.is_empty() {
                 return Ok(Args::JustPlay);
             } else {
-                return Err(Error::ExpectedSubcommand);
+                return Err(CliError::ExpectedSubcommand);
             }
         };
 
@@ -728,7 +726,7 @@ See the README of the project for more details.";
                 let output_path = pargs.value_from_os_str("--output-file", parse_path)?;
                 Ok(Args::KeepRecordingDemo { input_path, output_path })
             }
-            s => Err(Error::UnknownSubcommand(s.to_string())),
+            s => Err(CliError::UnknownSubcommand(s.to_string())),
         }
     }
 
@@ -747,8 +745,10 @@ See the README of the project for more details.";
 // TODO: make level editor
 
 fn make_wrapping_png_texture(png_bytes: &[u8]) -> Texture2D {
+    // SAFETY: internal context does not escape this function
     let ctx = unsafe { get_internal_gl() }.quad_context;
-    let img = image::load_from_memory_with_format(png_bytes, ImageFormat::Png).unwrap();
+    let img =
+        image::load_from_memory_with_format(png_bytes, ImageFormat::Png).expect("Invaild PNG ");
     let bytes = img.to_rgba8().into_raw();
 
     assert!(

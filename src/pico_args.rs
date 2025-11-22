@@ -39,19 +39,16 @@ If you think that this library doesn't support some feature, it's probably inten
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+use core::fmt::Display;
+use core::str::FromStr;
 use std::ffi::{
     OsStr,
     OsString,
 };
-use std::fmt::{
-    self,
-    Display,
-};
-use std::str::FromStr;
 
 /// A list of possible errors.
 #[derive(Clone, Debug)]
-pub enum Error {
+pub enum PicoError {
     /// Arguments must be a valid UTF-8 strings.
     NonUtf8Argument,
 
@@ -73,36 +70,36 @@ pub enum Error {
     ArgumentParsingFailed { cause: String },
 }
 
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl core::fmt::Display for PicoError {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
-            Error::NonUtf8Argument => {
+            PicoError::NonUtf8Argument => {
                 write!(f, "argument is not a UTF-8 string")
             }
-            Error::MissingArgument => {
+            PicoError::MissingArgument => {
                 write!(f, "free-standing argument is missing")
             }
-            Error::MissingOption(key) => {
+            PicoError::MissingOption(key) => {
                 if key.second().is_empty() {
                     write!(f, "the '{}' option must be set", key.first())
                 } else {
                     write!(f, "the '{}/{}' option must be set", key.first(), key.second())
                 }
             }
-            Error::OptionWithoutAValue(key) => {
-                write!(f, "the '{}' option doesn't have an associated value", key)
+            PicoError::OptionWithoutAValue(key) => {
+                write!(f, "the '{key}' option doesn't have an associated value")
             }
-            Error::Utf8ArgumentParsingFailed { value, cause } => {
-                write!(f, "failed to parse '{}': {}", value, cause)
+            PicoError::Utf8ArgumentParsingFailed { value, cause } => {
+                write!(f, "failed to parse '{value}': {cause}")
             }
-            Error::ArgumentParsingFailed { cause } => {
-                write!(f, "failed to parse a binary argument: {}", cause)
+            PicoError::ArgumentParsingFailed { cause } => {
+                write!(f, "failed to parse a binary argument: {cause}")
             }
         }
     }
 }
 
-impl std::error::Error for Error {}
+impl core::error::Error for PicoError {}
 
 #[derive(Clone, Copy, PartialEq)]
 enum PairKind {
@@ -142,7 +139,7 @@ impl Arguments {
     /// # Errors
     ///
     /// - When arguments is not a UTF-8 string.
-    pub fn subcommand(&mut self) -> Result<Option<String>, Error> {
+    pub fn subcommand(&mut self) -> Result<Option<String>, PicoError> {
         if self.0.is_empty() {
             return Ok(None);
         }
@@ -153,7 +150,8 @@ impl Arguments {
             return Ok(None);
         }
 
-        self.0.remove(0).into_string().map_err(|_| Error::NonUtf8Argument).map(Some)
+        #[allow(clippy::map_err_ignore)]
+        self.0.remove(0).into_string().map_err(|_| PicoError::NonUtf8Argument).map(Some)
     }
 
     /// Checks that arguments contain a specified flag.
@@ -180,7 +178,7 @@ impl Arguments {
     /// Parses a key-value pair using `FromStr` trait.
     ///
     /// This is a shorthand for `value_from_fn("--key", FromStr::from_str)`
-    pub fn value_from_str<A, T>(&mut self, keys: A) -> Result<T, Error>
+    pub fn value_from_str<A, T>(&mut self, keys: A) -> Result<T, PicoError>
     where
         A: Into<Keys>,
         T: FromStr,
@@ -212,11 +210,11 @@ impl Arguments {
         &mut self,
         keys: A,
         f: fn(&str) -> Result<T, E>,
-    ) -> Result<T, Error> {
+    ) -> Result<T, PicoError> {
         let keys = keys.into();
         match self.opt_value_from_fn(keys, f) {
             Ok(Some(v)) => Ok(v),
-            Ok(None) => Err(Error::MissingOption(keys)),
+            Ok(None) => Err(PicoError::MissingOption(keys)),
             Err(e) => Err(e),
         }
     }
@@ -224,7 +222,7 @@ impl Arguments {
     /// Parses an optional key-value pair using `FromStr` trait.
     ///
     /// This is a shorthand for `opt_value_from_fn("--key", FromStr::from_str)`
-    pub fn opt_value_from_str<A, T>(&mut self, keys: A) -> Result<Option<T>, Error>
+    pub fn opt_value_from_str<A, T>(&mut self, keys: A) -> Result<Option<T>, PicoError>
     where
         A: Into<Keys>,
         T: FromStr,
@@ -242,7 +240,7 @@ impl Arguments {
         &mut self,
         keys: A,
         f: fn(&str) -> Result<T, E>,
-    ) -> Result<Option<T>, Error> {
+    ) -> Result<Option<T>, PicoError> {
         self.opt_value_from_fn_impl(keys.into(), f)
     }
 
@@ -251,7 +249,7 @@ impl Arguments {
         &mut self,
         keys: Keys,
         f: fn(&str) -> Result<T, E>,
-    ) -> Result<Option<T>, Error> {
+    ) -> Result<Option<T>, PicoError> {
         match self.find_value(keys)? {
             Some((value, kind, idx)) => {
                 match f(value) {
@@ -264,7 +262,7 @@ impl Arguments {
 
                         Ok(Some(value))
                     }
-                    Err(e) => Err(Error::Utf8ArgumentParsingFailed {
+                    Err(e) => Err(PicoError::Utf8ArgumentParsingFailed {
                         value: value.to_string(),
                         cause: error_to_string(e),
                     }),
@@ -276,13 +274,12 @@ impl Arguments {
 
     // The whole logic must be type-independent to prevent monomorphization.
     #[inline(never)]
-    fn find_value(&mut self, keys: Keys) -> Result<Option<(&str, PairKind, usize)>, Error> {
+    fn find_value(&mut self, keys: Keys) -> Result<Option<(&str, PairKind, usize)>, PicoError> {
         if let Some((idx, key)) = self.index_of(keys) {
             // Parse a `--key value` pair.
 
-            let value = match self.0.get(idx + 1) {
-                Some(v) => v,
-                None => return Err(Error::OptionWithoutAValue(key)),
+            let Some(value) = self.0.get(idx + 1) else {
+                return Err(PicoError::OptionWithoutAValue(key));
             };
 
             let value = os_to_str(value)?;
@@ -295,7 +292,7 @@ impl Arguments {
     /// Parses multiple key-value pairs into the `Vec` using `FromStr` trait.
     ///
     /// This is a shorthand for `values_from_fn("--key", FromStr::from_str)`
-    pub fn values_from_str<A, T>(&mut self, keys: A) -> Result<Vec<T>, Error>
+    pub fn values_from_str<A, T>(&mut self, keys: A) -> Result<Vec<T>, PicoError>
     where
         A: Into<Keys>,
         T: FromStr,
@@ -321,7 +318,7 @@ impl Arguments {
         &mut self,
         keys: A,
         f: fn(&str) -> Result<T, E>,
-    ) -> Result<Vec<T>, Error> {
+    ) -> Result<Vec<T>, PicoError> {
         let keys = keys.into();
 
         let mut values = Vec::new();
@@ -354,11 +351,11 @@ impl Arguments {
         &mut self,
         keys: A,
         f: fn(&OsStr) -> Result<T, E>,
-    ) -> Result<T, Error> {
+    ) -> Result<T, PicoError> {
         let keys = keys.into();
         match self.opt_value_from_os_str(keys, f) {
             Ok(Some(v)) => Ok(v),
-            Ok(None) => Err(Error::MissingOption(keys)),
+            Ok(None) => Err(PicoError::MissingOption(keys)),
             Err(e) => Err(e),
         }
     }
@@ -372,7 +369,7 @@ impl Arguments {
         &mut self,
         keys: A,
         f: fn(&OsStr) -> Result<T, E>,
-    ) -> Result<Option<T>, Error> {
+    ) -> Result<Option<T>, PicoError> {
         self.opt_value_from_os_str_impl(keys.into(), f)
     }
 
@@ -381,13 +378,12 @@ impl Arguments {
         &mut self,
         keys: Keys,
         f: fn(&OsStr) -> Result<T, E>,
-    ) -> Result<Option<T>, Error> {
+    ) -> Result<Option<T>, PicoError> {
         if let Some((idx, key)) = self.index_of(keys) {
             // Parse a `--key value` pair.
 
-            let value = match self.0.get(idx + 1) {
-                Some(v) => v,
-                None => return Err(Error::OptionWithoutAValue(key)),
+            let Some(value) = self.0.get(idx + 1) else {
+                return Err(PicoError::OptionWithoutAValue(key));
             };
 
             match f(value) {
@@ -397,7 +393,7 @@ impl Arguments {
                     self.0.remove(idx);
                     Ok(Some(value))
                 }
-                Err(e) => Err(Error::ArgumentParsingFailed { cause: error_to_string(e) }),
+                Err(e) => Err(PicoError::ArgumentParsingFailed { cause: error_to_string(e) }),
             }
         } else {
             Ok(None)
@@ -418,7 +414,7 @@ impl Arguments {
         &mut self,
         keys: A,
         f: fn(&OsStr) -> Result<T, E>,
-    ) -> Result<Vec<T>, Error> {
+    ) -> Result<Vec<T>, PicoError> {
         let keys = keys.into();
         let mut values = Vec::new();
         loop {
@@ -451,7 +447,7 @@ impl Arguments {
     /// Parses a free-standing argument using `FromStr` trait.
     ///
     /// This is a shorthand for `free_from_fn(FromStr::from_str)`
-    pub fn free_from_str<T>(&mut self) -> Result<T, Error>
+    pub fn free_from_str<T>(&mut self) -> Result<T, PicoError>
     where
         T: FromStr,
         <T as FromStr>::Err: Display,
@@ -479,8 +475,11 @@ impl Arguments {
     ///
     /// [`free_from_os_str`]: struct.Arguments.html#method.free_from_os_str
     #[inline(never)]
-    pub fn free_from_fn<T, E: Display>(&mut self, f: fn(&str) -> Result<T, E>) -> Result<T, Error> {
-        self.opt_free_from_fn(f)?.ok_or(Error::MissingArgument)
+    pub fn free_from_fn<T, E: Display>(
+        &mut self,
+        f: fn(&str) -> Result<T, E>,
+    ) -> Result<T, PicoError> {
+        self.opt_free_from_fn(f)?.ok_or(PicoError::MissingArgument)
     }
 
     /// Parses a free-standing argument using a specified function.
@@ -492,8 +491,8 @@ impl Arguments {
     pub fn free_from_os_str<T, E: Display>(
         &mut self,
         f: fn(&OsStr) -> Result<T, E>,
-    ) -> Result<T, Error> {
-        self.opt_free_from_os_str(f)?.ok_or(Error::MissingArgument)
+    ) -> Result<T, PicoError> {
+        self.opt_free_from_os_str(f)?.ok_or(PicoError::MissingArgument)
     }
 
     /// Parses an optional free-standing argument using `FromStr` trait.
@@ -501,7 +500,7 @@ impl Arguments {
     /// The same as [`free_from_str`], but returns `Ok(None)` when argument is not present.
     ///
     /// [`free_from_str`]: struct.Arguments.html#method.free_from_str
-    pub fn opt_free_from_str<T>(&mut self) -> Result<Option<T>, Error>
+    pub fn opt_free_from_str<T>(&mut self) -> Result<Option<T>, PicoError>
     where
         T: FromStr,
         <T as FromStr>::Err: Display,
@@ -518,7 +517,7 @@ impl Arguments {
     pub fn opt_free_from_fn<T, E: Display>(
         &mut self,
         f: fn(&str) -> Result<T, E>,
-    ) -> Result<Option<T>, Error> {
+    ) -> Result<Option<T>, PicoError> {
         if self.0.is_empty() {
             Ok(None)
         } else {
@@ -526,7 +525,7 @@ impl Arguments {
             let value = os_to_str(value.as_os_str())?;
             match f(value) {
                 Ok(value) => Ok(Some(value)),
-                Err(e) => Err(Error::Utf8ArgumentParsingFailed {
+                Err(e) => Err(PicoError::Utf8ArgumentParsingFailed {
                     value: value.to_string(),
                     cause: error_to_string(e),
                 }),
@@ -543,14 +542,14 @@ impl Arguments {
     pub fn opt_free_from_os_str<T, E: Display>(
         &mut self,
         f: fn(&OsStr) -> Result<T, E>,
-    ) -> Result<Option<T>, Error> {
+    ) -> Result<Option<T>, PicoError> {
         if self.0.is_empty() {
             Ok(None)
         } else {
             let value = self.0.remove(0);
             match f(value.as_os_str()) {
                 Ok(value) => Ok(Some(value)),
-                Err(e) => Err(Error::ArgumentParsingFailed { cause: error_to_string(e) }),
+                Err(e) => Err(PicoError::ArgumentParsingFailed { cause: error_to_string(e) }),
             }
         }
     }
@@ -573,8 +572,8 @@ fn error_to_string<E: Display>(e: E) -> String {
 }
 
 #[inline]
-fn os_to_str(text: &OsStr) -> Result<&str, Error> {
-    text.to_str().ok_or(Error::NonUtf8Argument)
+fn os_to_str(text: &OsStr) -> Result<&str, PicoError> {
+    text.to_str().ok_or(PicoError::NonUtf8Argument)
 }
 
 /// A keys container.
@@ -599,7 +598,7 @@ impl Keys {
 impl From<[&'static str; 2]> for Keys {
     #[inline]
     fn from(v: [&'static str; 2]) -> Self {
-        debug_assert!(v[0].starts_with("-"), "an argument should start with '-'");
+        debug_assert!(v[0].starts_with('-'), "an argument should start with '-'");
         validate_shortflag(v[0]);
         debug_assert!(!v[0].starts_with("--"), "the first argument should be short");
         debug_assert!(v[1].starts_with("--"), "the second argument should be long");
@@ -620,7 +619,7 @@ fn validate_shortflag(short_key: &'static str) {
 impl From<&'static str> for Keys {
     #[inline]
     fn from(v: &'static str) -> Self {
-        debug_assert!(v.starts_with("-"), "an argument should start with '-'");
+        debug_assert!(v.starts_with('-'), "an argument should start with '-'");
         if !v.starts_with("--") {
             validate_shortflag(v);
         }

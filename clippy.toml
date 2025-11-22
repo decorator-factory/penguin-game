@@ -1,0 +1,6 @@
+# According to https://doc.rust-lang.org/stable/clippy/configuration.html
+# this file is kinda deprecated, but I don't see a non-deprecated alternative
+
+type-complexity-threshold = 300
+max-include-file-size = 65536  # 64 kilobytes
+avoid-breaking-exported-api = false

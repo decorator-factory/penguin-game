@@ -18,8 +18,8 @@ pub struct DemoMovie {
     actions: Box<[(u64, DemoAction)]>,
 }
 
-impl std::fmt::Debug for DemoMovie {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Debug for DemoMovie {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("DemoMovie").field("actions[]", &self.actions.len()).finish()
     }
 }
@@ -27,10 +27,6 @@ impl std::fmt::Debug for DemoMovie {
 impl DemoMovie {
     /// If `actions` is empty, adds an `at 0: look 0` action
     pub fn new(actions: Box<[(u64, DemoAction)]>) -> DemoMovie {
-        if actions.is_empty() {
-            return DemoMovie::new(Box::new([(0, DemoAction::SetLookAngle(0.0))]));
-        }
-
         {
             // ensure frame numbers are non-decreasing
             let mut last_frame = 0u64;
@@ -44,13 +40,8 @@ impl DemoMovie {
     }
 
     /// Last known frame number recorded in the movie
-    pub fn last_frame(&self) -> u64 {
-        self.actions.last().unwrap().0
-    }
-
-    #[allow(dead_code)]
-    pub fn actions(&self) -> &[(u64, DemoAction)] {
-        &self.actions
+    pub fn last_frame(&self) -> Option<u64> {
+        self.actions.last().map(|(frame, _)| *frame)
     }
 }
 
@@ -112,7 +103,7 @@ impl InputDevice for DemoPlayback {
 
 /// Decorator for an input device that records inputs
 /// (in a smart way, to reduce the movie size) to eventually
-/// retrieve them as a DemoMovie.
+/// retrieve them as a [`DemoMovie`].
 pub struct DemoRecorder<D> {
     actions: Vec<(u64, DemoAction)>,
     current_inputs: EnumSet<Input>,
@@ -200,8 +191,8 @@ impl<D: InputDevice> InputDevice for DemoRecorder<D> {
 #[derive(thiserror::Error, PartialEq, Debug)]
 #[error("{detail} at line {lineno}, column {colno}")]
 pub struct DemoParseError {
-    lineno: u32,
-    colno: u32,
+    lineno: usize,
+    colno: usize,
     detail: DemoParseErrorDetail,
 }
 
@@ -216,11 +207,9 @@ pub enum DemoParseErrorDetail {
 }
 
 fn expect_keyword<'src>(source: &'src [u8], prefix: &[u8]) -> Option<&'src [u8]> {
-    if source.starts_with(prefix) {
-        Some(unsafe { source.get_unchecked(prefix.len()..) })
-    } else {
-        None
-    }
+    source.starts_with(prefix).then(||
+        // SAFETY: if source starts with prefix, it must be at least that long
+        unsafe { source.get_unchecked(prefix.len()..) })
 }
 
 fn split_while<T, F>(slice: &[T], mut pred: F) -> (&[T], &[T])
@@ -237,10 +226,7 @@ where
     }
 }
 
-#[allow(dead_code)]
 pub fn unparse_movie(movie: &DemoMovie, w: &mut impl std::io::Write) -> std::io::Result<()> {
-    writeln!(w, "penguindemo-text-v0")?;
-
     fn format_input(inp: Input) -> &'static str {
         match inp {
             Input::Left => "left",
@@ -248,6 +234,8 @@ pub fn unparse_movie(movie: &DemoMovie, w: &mut impl std::io::Write) -> std::io:
             Input::Shoot => "shoot",
         }
     }
+
+    writeln!(w, "penguindemo-text-v0")?;
 
     for (frame, action) in &movie.actions {
         write!(w, "at {frame}: ")?;
@@ -273,7 +261,7 @@ pub fn parse_movie(source: &[u8]) -> Result<DemoMovie, DemoParseError> {
         });
     };
 
-    let mut lineno: u32 = 1;
+    let mut lineno = 1usize;
     let mut actions: Vec<(u64, DemoAction)> = Vec::with_capacity(1024);
     let mut last_frame = 0u64;
     for line in source.split(|b| *b == b'\n') {
@@ -291,7 +279,7 @@ pub fn parse_movie(source: &[u8]) -> Result<DemoMovie, DemoParseError> {
         }
 
         let wrap_err = |line: &[u8], detail| {
-            let colno = (1 + line_start.len() - line.len()) as u32;
+            let colno = 1 + line_start.len() - line.len();
             Err(DemoParseError { lineno, colno, detail })
         };
 
@@ -304,12 +292,13 @@ pub fn parse_movie(source: &[u8]) -> Result<DemoMovie, DemoParseError> {
         let line = line.trim_ascii_start();
 
         let frame_number_position = line; // saved for error reporting later
-        let (digits, line) = split_while(line, |b| b.is_ascii_digit());
+        let (digits, line) = split_while(line, u8::is_ascii_digit);
         if digits.is_empty() {
             return wrap_err(line, E::InvalidSyntax("expected decimal integer"));
         }
 
-        let digits = unsafe { str::from_utf8_unchecked(digits) }; // SAFETY: ASCII is valid UTF-8
+        // SAFETY: ASCII is valid UTF-8
+        let digits = unsafe { str::from_utf8_unchecked(digits) };
         let Ok(frame) = digits.parse::<u64>() else {
             return wrap_err(line, E::InvalidSyntax("number is too large"));
         };
@@ -351,7 +340,6 @@ pub fn parse_movie(source: &[u8]) -> Result<DemoMovie, DemoParseError> {
     Ok(DemoMovie::new(actions.into_boxed_slice()))
 }
 
-#[allow(clippy::type_complexity)]
 fn try_parse_action(line: &[u8]) -> Result<(&[u8], DemoAction), (&[u8], DemoParseErrorDetail)> {
     use DemoParseErrorDetail as E;
 
@@ -385,7 +373,7 @@ fn try_parse_action(line: &[u8]) -> Result<(&[u8], DemoAction), (&[u8], DemoPars
             let action = match kw {
                 Kw::On => DemoAction::InputOn(input),
                 Kw::Off => DemoAction::InputOff(input),
-                _ => unreachable!(),
+                Kw::Look => unreachable!(),
             };
             (line, action)
         }
@@ -395,7 +383,9 @@ fn try_parse_action(line: &[u8]) -> Result<(&[u8], DemoAction), (&[u8], DemoPars
             if numeric.is_empty() {
                 return Err((line, E::InvalidSyntax("expected decimal number")));
             }
-            let numeric = unsafe { str::from_utf8_unchecked(numeric) }; // SAFETY: ASCII is valid UTF-8
+
+            // SAFETY: ASCII is valid UTF-8
+            let numeric = unsafe { str::from_utf8_unchecked(numeric) };
             let Ok(angle) = str::parse::<f32>(numeric) else {
                 return Err((line, E::InvalidSyntax("expected decimal number")));
             };
@@ -444,40 +434,40 @@ mod parse_tests {
     };
 
     #[test]
-    pub fn test_split_while_empty() {
+    pub fn split_while_empty() {
         let (left, right) = split_while(b"aaaabcd", |c| *c == b'?');
         assert_eq!((left, right), (&b""[..], &b"aaaabcd"[..]));
     }
 
     #[test]
-    pub fn test_split_while_empty_string() {
+    pub fn split_while_empty_string() {
         let (left, right) = split_while(b"", |c| *c == b'?');
         assert_eq!((left, right), (&b""[..], &b""[..]));
     }
 
     #[test]
-    pub fn test_split_while_mixed() {
+    pub fn split_while_mixed() {
         let (left, right) = split_while(b"aaaabcd", |c| *c == b'a');
         assert_eq!((left, right), (&b"aaaa"[..], &b"bcd"[..]));
     }
 
     #[test]
-    pub fn test_expect_ok() {
+    pub fn expect_keyword_ok() {
         assert_eq!(Some(&b" banana"[..]), expect_keyword(b"apple banana", b"apple"));
     }
 
     #[test]
-    pub fn test_expect_fail() {
+    pub fn expect_keyword_fail() {
         assert_eq!(None, expect_keyword(b"apple banana", b"cherry"));
     }
 
     #[test]
-    pub fn test_expect_fail_empty_source() {
+    pub fn expect_keyword_fail_empty_source() {
         assert_eq!(None, expect_keyword(b"", b"cherry"));
     }
 
     #[test]
-    pub fn test_wrong_version() {
+    pub fn wrong_version() {
         let source = b"penguindemo-text-v69\n";
         let err = parse_movie(source).unwrap_err();
         assert_eq!(err, DemoParseError {
@@ -488,7 +478,7 @@ mod parse_tests {
     }
 
     #[test]
-    pub fn test_wrong_header() {
+    pub fn wrong_header() {
         let source = b"\x00WRONG";
         let err = parse_movie(source).unwrap_err();
         assert_eq!(err, DemoParseError {
@@ -499,14 +489,14 @@ mod parse_tests {
     }
 
     #[test]
-    pub fn test_empty_movie() {
+    pub fn empty_movie() {
         let source = b"penguindemo-text-v0\n";
         let movie = parse_movie(source).unwrap();
-        assert_eq!(movie.actions.as_ref(), [(0, DemoAction::SetLookAngle(0.0))]);
+        assert_eq!(movie.actions.as_ref(), []);
     }
 
     #[test]
-    pub fn test_simple_movie() {
+    pub fn simple_movie() {
         let source = b"penguindemo-text-v0\n\
             at 0: on left\n\
             at 9: on shoot \n\
@@ -524,7 +514,7 @@ mod parse_tests {
     }
 
     #[test]
-    pub fn test_look_movie() {
+    pub fn look_movie() {
         let source = b"penguindemo-text-v0\n\
             at 42: look 90\n\
             at 69: look 0\n\
@@ -538,7 +528,7 @@ mod parse_tests {
     }
 
     #[test]
-    pub fn test_movie_with_comments() {
+    pub fn movie_with_comments() {
         let source = b"penguindemo-text-v0\n\
             # this comment takes an entire line
             at 42: look 90  # this comment is after a line\n\
@@ -553,7 +543,7 @@ mod parse_tests {
     }
 
     #[test]
-    pub fn test_space_required_after_keyword() {
+    pub fn space_required_after_keyword() {
         let sources = [
             &b"penguindemo-text-v0\nat42: look 90\n"[..],
             &b"penguindemo-text-v0\nat 42: look90\n"[..],
