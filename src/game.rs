@@ -1,3 +1,8 @@
+use std::{
+    collections::VecDeque,
+    fmt::Write,
+};
+
 use macroquad::prelude::*;
 use miniquad::TextureWrap;
 use parry2d::shape::ConvexPolygon;
@@ -63,6 +68,64 @@ impl GameState {
     }
 }
 
+struct Stats {
+    update_total: f64,
+    update_buffer: VecDeque<f64>,
+    graphics_total: f64,
+    graphics_buffer: VecDeque<f64>,
+    display: String,
+}
+
+impl Stats {
+    fn new() -> Stats {
+        Stats {
+            update_total: 0.0,
+            update_buffer: VecDeque::from_iter([0.0; 60]),
+            graphics_total: 0.0,
+            graphics_buffer: VecDeque::from_iter([0.0; 60]),
+            display: String::with_capacity(64),
+        }
+    }
+
+    fn measure_update(&mut self, f: impl FnOnce()) {
+        let start = get_time();
+        f();
+        let delta = get_time() - start;
+        let subtract = self.update_buffer.pop_back().unwrap();
+        self.update_total -= subtract;
+        self.update_total += delta;
+
+        self.update_buffer.push_front(delta);
+    }
+
+    fn measure_graphics(&mut self, f: impl FnOnce()) {
+        let start = get_time();
+        f();
+        let delta = get_time() - start;
+
+        let subtract = self.graphics_buffer.pop_back().unwrap();
+        self.graphics_total -= subtract;
+        self.graphics_total += delta;
+
+        self.graphics_buffer.push_front(delta);
+    }
+
+    fn sample(&mut self) {
+        let update_micros = self.update_total * 1_000_000.0 / 60.0;
+        let graphics_micros = self.graphics_total * 1_000_000.0 / 60.0;
+
+        self.display.clear();
+        write!(self.display, "(upd {update_micros:<03.2}us, draw {graphics_micros:<03.2}us)")
+            .unwrap();
+    }
+}
+
+impl core::fmt::Display for Stats {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(&self.display)
+    }
+}
+
 pub async fn run_game(device: &mut impl crate::input::InputDevice) {
     let mut state = GameState::new();
 
@@ -71,8 +134,11 @@ pub async fn run_game(device: &mut impl crate::input::InputDevice) {
     let mut time_bank: f64 = 0.0;
     let mut last_time = get_time();
 
-    let mut frame = 0u64;
+    let mut update_number = 0u64;
+    let mut frame_number = 0u64;
     let mut speed_up = false;
+
+    let mut stats = Stats::new();
 
     // Handling the quit event manually allows us to save the demo recording
     prevent_quit();
@@ -80,34 +146,45 @@ pub async fn run_game(device: &mut impl crate::input::InputDevice) {
         if is_key_pressed(KeyCode::R) {
             speed_up = !speed_up;
         }
-        // Frame debt logic
+        // Update debt logic
         let now = get_time();
         time_bank += now - last_time;
         last_time = now;
         let ups = if speed_up { UPS_FAST } else { UPS_NORMAL };
-        let update_frame_time = 1.0 / ups;
-        if time_bank >= update_frame_time * 60.0 {
+        let update_time = 1.0 / ups;
+        if time_bank >= update_time * 60.0 {
             // This can happen due to several reasons:
             // - lag spikes in other programs
             // - using very high UPS (like when pressing R) using a debug build and a low end device
             // - on Linux I only get one update per second when the application is minimized
             // and we don't want to run a million updates in a single frame
             macroquad::logging::warn!("time bank bankrupcy");
-            time_bank = update_frame_time;
+            time_bank = update_time;
         }
 
-        while time_bank >= update_frame_time {
-            device.next_frame();
-            frame += 1;
-            updates::fixed_update(&mut state, device);
-            time_bank -= update_frame_time;
-        }
+        stats.measure_update(|| {
+            while time_bank >= update_time {
+                device.next_update();
+                update_number += 1;
+                updates::fixed_update(&mut state, device);
+                time_bank -= update_time;
+            }
+        });
 
-        graphics::draw_state(&state, device.look_angle_radians());
+        stats.measure_graphics(|| {
+            graphics::draw_state(&state, device.look_angle_radians());
+        });
 
-        // Debug information
-        draw_text(&format!("FPS: {:03}, target_ups: {:04}", get_fps(), ups), 32., 32., 16., WHITE);
-        let debug_line = &format!("frame: {}, input: {}, ", frame, device.device_info());
+        // Draw debug information. Not included into graphics measurement, takes very little time
+        let fps = get_fps();
+        draw_text(&format!("FPS: {fps:03}, target UPS: {ups:04}"), 32., 32., 16., WHITE);
+        let debug_line = &format!(
+            "upd: {}, frame: {}, input: {}, perf: {}",
+            frame_number,
+            update_number,
+            device.device_info(),
+            stats
+        );
         draw_text(debug_line, 32., 48., 16., WHITE);
         let mut y = 64.0;
         for string in &state.debug_strings {
@@ -115,6 +192,11 @@ pub async fn run_game(device: &mut impl crate::input::InputDevice) {
             y += 16.0;
         }
         next_frame().await;
+        frame_number += 1;
+        #[expect(clippy::cast_sign_loss)]
+        if frame_number.is_multiple_of((fps / 4) as u64) {
+            stats.sample();
+        }
     }
 
     macroquad::logging::warn!("Closing penguin-game window");

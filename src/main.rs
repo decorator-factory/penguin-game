@@ -144,11 +144,11 @@ async fn amain(args: RunArgs) {
         }
         RunArgs::KeepRecordingDemo { in_movie, mut output_file, output_path } => {
             let mut device = {
-                let threshold_frame = in_movie.last_frame().unwrap_or(0) + 1;
+                let threshold_upd = in_movie.last_update().unwrap_or(0) + 1;
                 let playback = demo::DemoPlayback::new(in_movie);
-                let recorder = demo::DemoRecorder::new(input::MacroquadInput, threshold_frame);
+                let recorder = demo::DemoRecorder::new(input::MacroquadInput, threshold_upd);
                 let names = (Cow::Borrowed("playback"), Cow::Borrowed("recording"));
-                input::ComposedInput::new(playback, recorder, threshold_frame, names)
+                input::ComposedInput::new(playback, recorder, threshold_upd, names)
             };
             game::run_game(&mut device).await;
             let output_movie = device.into_inner().1.collect_recording();

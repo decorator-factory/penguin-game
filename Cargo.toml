@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [profile.release]
-lto = "fat"
+lto = "thin"
 codegen-units = 1
 opt-level = "s"
 strip = "symbols"
@@ -28,6 +28,7 @@ enumset = "=1.1.10"
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
 redundant_else = "allow"
+similar_names = "allow"
 
 # Restrictions
 as_underscore = "deny"

@@ -10,12 +10,12 @@ pub enum Input {
 }
 
 pub trait InputDevice {
-    fn next_frame(&mut self);
+    fn next_update(&mut self);
 
-    /// This value should not change within a single frame
+    /// This value should not change within a single update
     fn is_input_down(&self, input: Input) -> bool;
 
-    /// This value should not change within a single frame
+    /// This value should not change within a single update
     fn look_angle_radians(&self) -> f32;
 
     fn device_info(&'_ self) -> Cow<'_, str>;
@@ -25,7 +25,7 @@ pub trait InputDevice {
 pub struct MacroquadInput;
 
 impl InputDevice for MacroquadInput {
-    fn next_frame(&mut self) {}
+    fn next_update(&mut self) {}
 
     fn is_input_down(&self, input: Input) -> bool {
         match input {
@@ -52,20 +52,20 @@ pub struct ComposedInput<A, B> {
     first: A,
     second: B,
     names: (Cow<'static, str>, Cow<'static, str>),
-    threshold_frame: u64,
-    current_frame: u64,
+    threshold_update: u64,
+    current_update: u64,
 }
 
 impl<A, B> ComposedInput<A, B> {
-    /// `threshold_frame` is the *first frame* on which (and after which)
+    /// `threshold_update` is the *first update number* on which (and after which)
     /// the second input device will be used.
     pub fn new(
         first: A,
         second: B,
-        threshold_frame: u64,
+        threshold_update: u64,
         names: (Cow<'static, str>, Cow<'static, str>),
     ) -> ComposedInput<A, B> {
-        ComposedInput { first, second, threshold_frame, names, current_frame: 0 }
+        ComposedInput { first, second, threshold_update, names, current_update: 0 }
     }
 
     pub fn into_inner(self) -> (A, B) {
@@ -78,17 +78,17 @@ where
     A: InputDevice,
     B: InputDevice,
 {
-    fn next_frame(&mut self) {
-        if self.current_frame >= self.threshold_frame {
-            self.second.next_frame();
+    fn next_update(&mut self) {
+        if self.current_update >= self.threshold_update {
+            self.second.next_update();
         } else {
-            self.first.next_frame();
+            self.first.next_update();
         }
-        self.current_frame += 1;
+        self.current_update += 1;
     }
 
     fn is_input_down(&self, input: Input) -> bool {
-        if self.current_frame >= self.threshold_frame {
+        if self.current_update >= self.threshold_update {
             self.second.is_input_down(input)
         } else {
             self.first.is_input_down(input)
@@ -96,7 +96,7 @@ where
     }
 
     fn look_angle_radians(&self) -> f32 {
-        if self.current_frame >= self.threshold_frame {
+        if self.current_update >= self.threshold_update {
             self.second.look_angle_radians()
         } else {
             self.first.look_angle_radians()
@@ -104,13 +104,13 @@ where
     }
 
     fn device_info(&'_ self) -> Cow<'_, str> {
-        Cow::Owned(if self.current_frame >= self.threshold_frame {
+        Cow::Owned(if self.current_update >= self.threshold_update {
             format!("{} ({})", self.names.1, self.second.device_info())
         } else {
-            let diff = self.threshold_frame - self.current_frame;
+            let diff = self.threshold_update - self.current_update;
             if diff <= 1200 {
                 format!(
-                    "{} ({}) [switching in {diff} frames]",
+                    "{} ({}) [switching in {diff} updates]",
                     self.names.0,
                     self.first.device_info()
                 )

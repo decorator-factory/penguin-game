@@ -28,25 +28,25 @@ impl DemoMovie {
     /// If `actions` is empty, adds an `at 0: look 0` action
     pub fn new(actions: Box<[(u64, DemoAction)]>) -> DemoMovie {
         {
-            // ensure frame numbers are non-decreasing
-            let mut last_frame = 0u64;
-            for (i, (frame, action)) in actions.iter().enumerate() {
-                assert!(*frame >= last_frame, "Instruction out of place: {:?}", (i, frame, action));
-                last_frame = *frame;
+            // ensure update numbers are non-decreasing
+            let mut last_upd = 0u64;
+            for (i, (upd, action)) in actions.iter().enumerate() {
+                assert!(*upd >= last_upd, "Instruction out of place: {:?}", (i, upd, action));
+                last_upd = *upd;
             }
         }
 
         DemoMovie { actions }
     }
 
-    /// Last known frame number recorded in the movie
-    pub fn last_frame(&self) -> Option<u64> {
-        self.actions.last().map(|(frame, _)| *frame)
+    /// Last known update number recorded in the movie
+    pub fn last_update(&self) -> Option<u64> {
+        self.actions.last().map(|(upd, _)| *upd)
     }
 }
 
 pub struct DemoPlayback {
-    frame: u64,
+    upd: u64,
     movie: DemoMovie,
     action_index: usize,
     look_angle: f32,
@@ -55,7 +55,7 @@ pub struct DemoPlayback {
 
 impl DemoPlayback {
     pub fn new(movie: DemoMovie) -> DemoPlayback {
-        DemoPlayback { movie, frame: 0, action_index: 0, look_angle: 0.0, inputs: EnumSet::new() }
+        DemoPlayback { movie, upd: 0, action_index: 0, look_angle: 0.0, inputs: EnumSet::new() }
     }
 
     fn handle_action(&mut self, action: DemoAction) {
@@ -76,26 +76,26 @@ impl InputDevice for DemoPlayback {
         self.look_angle
     }
 
-    fn next_frame(&mut self) {
+    fn next_update(&mut self) {
         if self.action_index >= self.movie.actions.len() {
             return;
         }
 
         loop {
-            let Some((frame, action)) = self.movie.actions.get(self.action_index) else { return };
+            let Some((upd, action)) = self.movie.actions.get(self.action_index) else { return };
 
-            if *frame == self.frame {
+            if *upd == self.upd {
                 self.handle_action(*action);
                 self.action_index += 1;
-            } else if *frame <= self.frame {
+            } else if *upd <= self.upd {
                 debug_assert!(
                     false,
-                    "At frame={frame}, action={action:?}: we're somehow past our next action"
+                    "At upd={upd}, action={action:?}: we're somehow past our next action"
                 );
-                self.frame = *frame;
+                self.upd = *upd;
                 self.handle_action(*action);
             } else {
-                self.frame += 1;
+                self.upd += 1;
                 return;
             }
         }
@@ -115,19 +115,19 @@ pub struct DemoRecorder<D> {
     actions: Vec<(u64, DemoAction)>,
     current_inputs: EnumSet<Input>,
     wrapped: D,
-    current_frame: u64,
+    current_upd: u64,
     shot_cooldown: u64,
     look_cooldown: u64,
     last_recorded_look: f32,
 }
 
 impl<D: InputDevice> DemoRecorder<D> {
-    pub fn new(wrapped: D, starting_frame: u64) -> DemoRecorder<D> {
+    pub fn new(wrapped: D, starting_update: u64) -> DemoRecorder<D> {
         DemoRecorder {
             actions: Vec::with_capacity(1024),
             current_inputs: EnumSet::new(),
             wrapped,
-            current_frame: starting_frame,
+            current_upd: starting_update,
             shot_cooldown: 0,
             look_cooldown: 0,
             last_recorded_look: 0.0,
@@ -168,17 +168,17 @@ impl<D: InputDevice> DemoRecorder<D> {
 
         if let Some(deg) = record_look_degrees {
             self.last_recorded_look = look_radians;
-            self.actions.push((self.current_frame, DemoAction::SetLookAngle(deg)));
+            self.actions.push((self.current_upd, DemoAction::SetLookAngle(deg)));
         }
     }
 }
 
 impl<D: InputDevice> InputDevice for DemoRecorder<D> {
-    fn next_frame(&mut self) {
-        self.wrapped.next_frame();
+    fn next_update(&mut self) {
+        self.wrapped.next_update();
         self.maybe_record_look_angle();
 
-        // When recording a new frame, consult the parent device to see
+        // When recording a new update, consult the parent device to see
         // what changed and potentially record demo commands
         let mut to_on = EnumSet::new();
         let mut to_off = EnumSet::new();
@@ -196,15 +196,15 @@ impl<D: InputDevice> InputDevice for DemoRecorder<D> {
         }
 
         for input in to_on {
-            self.actions.push((self.current_frame, DemoAction::InputOn(input)));
+            self.actions.push((self.current_upd, DemoAction::InputOn(input)));
         }
         for input in to_off {
-            self.actions.push((self.current_frame, DemoAction::InputOff(input)));
+            self.actions.push((self.current_upd, DemoAction::InputOff(input)));
         }
 
         self.current_inputs = (self.current_inputs | to_on) - to_off;
 
-        self.current_frame += 1;
+        self.current_upd += 1;
     }
 
     fn is_input_down(&self, input: Input) -> bool {
@@ -236,8 +236,8 @@ pub enum DemoParseErrorDetail {
     InvalidHeader,
     #[error("{0}")]
     InvalidSyntax(&'static str),
-    #[error("Frame numbers in the demo movie must be in a non-decreasing order")]
-    FrameDecreased,
+    #[error("Update numbers in the demo movie must be in a non-decreasing order")]
+    UpdateNumberDecreased,
 }
 
 fn expect_keyword<'src>(source: &'src [u8], prefix: &[u8]) -> Option<&'src [u8]> {
@@ -278,8 +278,8 @@ pub fn unparse_movie(movie: &DemoMovie, w: &mut impl std::io::Write) -> std::io:
 
     writeln!(w, "penguindemo-text-v0")?;
 
-    for (frame, action) in &movie.actions {
-        write!(w, "at {frame}: ")?;
+    for (upd, action) in &movie.actions {
+        write!(w, "at {upd}: ")?;
         match action {
             DemoAction::InputOn(input) => writeln!(w, "on {}", format_input(*input))?,
             DemoAction::InputOff(input) => writeln!(w, "off {}", format_input(*input))?,
@@ -304,7 +304,7 @@ pub fn parse_movie(source: &[u8]) -> Result<DemoMovie, DemoParseError> {
 
     let mut lineno = 1usize;
     let mut actions: Vec<(u64, DemoAction)> = Vec::with_capacity(1024);
-    let mut last_frame = 0u64;
+    let mut last_upd = 0u64;
     for line in source.split(|b| *b == b'\n') {
         lineno += 1;
         let line_start = line;
@@ -332,7 +332,7 @@ pub fn parse_movie(source: &[u8]) -> Result<DemoMovie, DemoParseError> {
         }
         let line = line.trim_ascii_start();
 
-        let frame_number_position = line; // saved for error reporting later
+        let upd_number_position = line; // saved for error reporting later
         let (digits, line) = split_while(line, u8::is_ascii_digit);
         if digits.is_empty() {
             return wrap_err(line, E::InvalidSyntax("expected decimal integer"));
@@ -340,12 +340,12 @@ pub fn parse_movie(source: &[u8]) -> Result<DemoMovie, DemoParseError> {
 
         // SAFETY: ASCII is valid UTF-8
         let digits = unsafe { str::from_utf8_unchecked(digits) };
-        let Ok(frame) = digits.parse::<u64>() else {
+        let Ok(upd) = digits.parse::<u64>() else {
             return wrap_err(line, E::InvalidSyntax("number is too large"));
         };
 
-        if frame >= u64::MAX / 4 {
-            // I don't think this is technically required, but frame counts this high
+        if upd >= u64::MAX / 4 {
+            // I don't think this is technically required, but update counts this high
             // are probably a typo or deliberately wrong input. So let's not panic further in
             // the code
             return wrap_err(line, E::InvalidSyntax("number is too large"));
@@ -370,12 +370,12 @@ pub fn parse_movie(source: &[u8]) -> Result<DemoMovie, DemoParseError> {
             );
         }
 
-        if frame < last_frame {
-            return wrap_err(frame_number_position, E::FrameDecreased);
+        if upd < last_upd {
+            return wrap_err(upd_number_position, E::UpdateNumberDecreased);
         }
-        last_frame = frame;
+        last_upd = upd;
 
-        actions.push((frame, action));
+        actions.push((upd, action));
     }
 
     Ok(DemoMovie::new(actions.into_boxed_slice()))

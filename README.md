@@ -53,7 +53,7 @@ Usage:
     penguindemo-text-v0
     #^ The demo file must start with exactly this magic line
 
-    #  This is the frame number on which an action occurs.
+    #  This is the update number on which an action occurs.
     #  They must be in non-decreasing order.
     #  VVVV
     at  300: look 90    # look down to fly as high as possible
