@@ -146,7 +146,7 @@ impl<D: InputDevice> DemoRecorder<D> {
             if self.shot_cooldown == 0 {
                 if (self.last_recorded_look - look_radians).abs() > 0.001 {
                     record_look_degrees = Some(look_radians.to_degrees());
-                    self.shot_cooldown = 20; // TODO: this is not a good solution
+                    self.shot_cooldown = 10; // TODO: this is not a good solution
                     self.look_cooldown = 30;
                 }
             } else {

@@ -64,6 +64,29 @@ pub fn draw_textured_poly(points: &[Vec2], opts: impl Into<DrawOpts>) {
     gl.geometry(&vertices, &indices);
 }
 
+/// Draw a circle that's partially filled.
+/// `ratio` must be a value from 0 to 1
+#[expect(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+pub fn draw_vclipped_circle(x: f32, y: f32, radius: f32, ratio: f32, color: Color) {
+    debug_assert!(radius.is_finite() && radius >= 0.0, "invalid radius: {radius}");
+    debug_assert!(ratio.is_finite() && (0.0..=1.0).contains(&ratio), "invalid ratio: {ratio}");
+
+    let target = render_target((radius * 2.0) as u32, (radius * 2.0) as u32);
+    push_camera_state();
+    let camera = Camera2D { render_target: Some(target), ..Default::default() };
+    set_camera(&camera);
+    draw_circle(0.0, 0.0, 1.0, color);
+    pop_camera_state();
+    let texture = camera.render_target.unwrap().texture;
+
+    let y_offset = (1.0 - ratio) * radius * 2.0;
+
+    draw_texture_ex(&texture, x - radius, y - radius + y_offset, WHITE, DrawTextureParams {
+        source: Some(Rect { x: 0.0, y: y_offset, w: radius * 2.0, h: radius * 2.0 - y_offset }),
+        ..Default::default()
+    });
+}
+
 #[allow(dead_code, reason = "this function is useful for debugging")]
 pub fn draw_arrow(start: Vec2, end: Vec2, color: Color) {
     let delta = (start - end).normalize_or_zero();

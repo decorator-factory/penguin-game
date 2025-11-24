@@ -15,11 +15,15 @@ const UPS_FAST: f64 = 1200.;
 const PENGUIN_RADIUS: f32 = 24.0;
 const ROCKET_RADIUS: f32 = 4.0;
 
+const FUEL_MAX: u16 = 240;
+const FUEL_ROCKET_COST: u16 = 100;
+
 #[derive(Copy, Clone, Debug)]
 struct Penguin {
     pos: Vec2,
     vel: Vec2,
     rocket_cooldown: u16,
+    fuel: u16,
     is_grounded: bool,
 }
 
@@ -55,6 +59,7 @@ impl GameState {
             pos: level.start_pos(),
             vel: Vec2::ZERO,
             is_grounded: false,
+            fuel: FUEL_MAX,
             rocket_cooldown: 0,
         };
 
@@ -65,64 +70,6 @@ impl GameState {
             explosions: Vec::with_capacity(32),
             debug_strings: Vec::with_capacity(16),
         }
-    }
-}
-
-struct Stats {
-    update_total: f64,
-    update_buffer: VecDeque<f64>,
-    graphics_total: f64,
-    graphics_buffer: VecDeque<f64>,
-    display: String,
-}
-
-impl Stats {
-    fn new() -> Stats {
-        Stats {
-            update_total: 0.0,
-            update_buffer: VecDeque::from_iter([0.0; 60]),
-            graphics_total: 0.0,
-            graphics_buffer: VecDeque::from_iter([0.0; 60]),
-            display: String::with_capacity(64),
-        }
-    }
-
-    fn measure_update(&mut self, f: impl FnOnce()) {
-        let start = get_time();
-        f();
-        let delta = get_time() - start;
-        let subtract = self.update_buffer.pop_back().unwrap();
-        self.update_total -= subtract;
-        self.update_total += delta;
-
-        self.update_buffer.push_front(delta);
-    }
-
-    fn measure_graphics(&mut self, f: impl FnOnce()) {
-        let start = get_time();
-        f();
-        let delta = get_time() - start;
-
-        let subtract = self.graphics_buffer.pop_back().unwrap();
-        self.graphics_total -= subtract;
-        self.graphics_total += delta;
-
-        self.graphics_buffer.push_front(delta);
-    }
-
-    fn sample(&mut self) {
-        let update_micros = self.update_total * 1_000_000.0 / 60.0;
-        let graphics_micros = self.graphics_total * 1_000_000.0 / 60.0;
-
-        self.display.clear();
-        write!(self.display, "(upd {update_micros:<03.2}us, draw {graphics_micros:<03.2}us)")
-            .unwrap();
-    }
-}
-
-impl core::fmt::Display for Stats {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(&self.display)
     }
 }
 
@@ -202,6 +149,66 @@ pub async fn run_game(device: &mut impl crate::input::InputDevice) {
     macroquad::logging::warn!("Closing penguin-game window");
 }
 
+struct Stats {
+    update_total: f64,
+    update_buffer: VecDeque<f64>,
+    graphics_total: f64,
+    graphics_buffer: VecDeque<f64>,
+    display: String,
+}
+
+impl Stats {
+    const BUFFER_LEN: usize = 60;
+
+    fn new() -> Stats {
+        Stats {
+            update_total: 0.0,
+            update_buffer: VecDeque::from_iter([0.0; Self::BUFFER_LEN]),
+            graphics_total: 0.0,
+            graphics_buffer: VecDeque::from_iter([0.0; Self::BUFFER_LEN]),
+            display: String::with_capacity(64),
+        }
+    }
+
+    fn measure_update(&mut self, f: impl FnOnce()) {
+        let start = get_time();
+        f();
+        let delta = get_time() - start;
+        let subtract = self.update_buffer.pop_back().unwrap();
+        self.update_total -= subtract;
+        self.update_total += delta;
+
+        self.update_buffer.push_front(delta);
+    }
+
+    fn measure_graphics(&mut self, f: impl FnOnce()) {
+        let start = get_time();
+        f();
+        let delta = get_time() - start;
+
+        let subtract = self.graphics_buffer.pop_back().unwrap();
+        self.graphics_total -= subtract;
+        self.graphics_total += delta;
+
+        self.graphics_buffer.push_front(delta);
+    }
+
+    #[allow(clippy::cast_precision_loss)]
+    fn sample(&mut self) {
+        let update_micros = self.update_total * 1_000_000.0 / (Self::BUFFER_LEN as f64);
+        let graphics_micros = self.graphics_total * 1_000_000.0 / (Self::BUFFER_LEN as f64);
+
+        self.display.clear();
+        write!(self.display, "(upd {update_micros:.2}us, draw {graphics_micros:.2}us)").unwrap();
+    }
+}
+
+impl core::fmt::Display for Stats {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(&self.display)
+    }
+}
+
 mod updates {
     use super::{
         ConvexPolygon,
@@ -212,9 +219,15 @@ mod updates {
         ROCKET_RADIUS,
         Rocket,
     };
-    use crate::input::{
-        Input,
-        InputDevice,
+    use crate::{
+        game::{
+            FUEL_MAX,
+            FUEL_ROCKET_COST,
+        },
+        input::{
+            Input,
+            InputDevice,
+        },
     };
     use arrayvec::ArrayVec;
     use core::f32::consts::PI;
@@ -229,7 +242,7 @@ mod updates {
 
     const ROCKET_SPEED: f32 = 2.7;
     const ROCKET_TTL: u16 = 300;
-    const ROCKET_SHOOT_COOLDOWN: u16 = 60;
+    const ROCKET_SHOOT_COOLDOWN: u16 = 40;
 
     const EXPLOSION_RADIUS: f32 = 42.0;
     const EXPLOSION_TTL: u16 = 8;
@@ -265,14 +278,22 @@ mod updates {
 
         state.penguin.rocket_cooldown = state.penguin.rocket_cooldown.saturating_sub(1);
         // Spawn rocket
-        if device.is_input_down(Input::Shoot) && state.penguin.rocket_cooldown == 0 {
+        if state.penguin.fuel >= FUEL_ROCKET_COST
+            && state.penguin.rocket_cooldown == 0
+            && device.is_input_down(Input::Shoot)
+        {
             state.penguin.rocket_cooldown = ROCKET_SHOOT_COOLDOWN;
+            state.penguin.fuel -= FUEL_ROCKET_COST;
             let dir = Vec2::from_angle(device.look_angle_radians());
             state.rockets.push(Rocket {
                 pos: state.penguin.pos,
                 vel: dir * ROCKET_SPEED,
                 ttl: ROCKET_TTL,
             });
+        }
+
+        if state.penguin.fuel < FUEL_MAX {
+            state.penguin.fuel += 1;
         }
     }
 
@@ -505,6 +526,7 @@ mod graphics {
     use macroquad::prelude::*;
 
     pub fn draw_state(state: &GameState, look_angle: f32) {
+        push_camera_state();
         let screen_size = {
             let (w, h) = miniquad::window::screen_size();
             vec2(w, h)
@@ -515,14 +537,19 @@ mod graphics {
         for graphic in state.level.graphics() {
             graphic.macroquad_draw();
         }
-        draw_penguin(state.penguin.pos, state.penguin.vel, Vec2::from_angle(look_angle));
+        draw_penguin(
+            state.penguin.pos,
+            state.penguin.vel,
+            Vec2::from_angle(look_angle),
+            state.penguin.fuel,
+        );
         for &rocket in &state.rockets {
             draw_rocket(rocket.pos, rocket.vel);
         }
         for &explosion in &state.explosions {
             draw_explosion(explosion);
         }
-        set_default_camera();
+        pop_camera_state();
     }
 
     fn viewport_offset_to_camera(offset: Vec2, screen_size: Vec2) -> Camera2D {
@@ -556,15 +583,18 @@ mod graphics {
         draw_circle(pos.x, pos.y, (radius - 1.) * f32::from(ttl) / f32::from(initial_ttl), WHITE);
     }
 
-    const PENGUINGRAY: Color = Color::new(0.15, 0.15, 0.25, 1.0);
+    const PENGUINGRAY: Color = Color::new(0.12, 0.12, 0.22, 1.0);
+    const PENGUINGRAY_DIM: Color = Color::new(0.25, 0.25, 0.4, 1.0);
 
-    fn draw_penguin(pos: Vec2, vel: Vec2, eyes_dir: Vec2) {
+    fn draw_penguin(pos: Vec2, vel: Vec2, eyes_dir: Vec2, fuel: u16) {
         const RAD: f32 = PENGUIN_RADIUS;
         let (cx, cy) = (pos.x, pos.y);
+        let fill_fraction = f32::from(fuel) / f32::from(super::FUEL_MAX);
 
-        if vel.length() > 2.0 {
+        // Draw trail when moving at high speed
+        if vel.length() > 1.8 {
             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-            let steps = ((vel.length() - 1.5) / 0.5).min(100.0) as u16;
+            let steps = ((vel.length() - 1.5) / 0.33).min(100.0) as u16;
             for i in 0..steps {
                 let fade_factor = 1. - f32::from(i) / f32::from(steps);
                 let dpos = pos - vel.normalize() * (1. + f32::from(i)) * 4.0;
@@ -577,9 +607,12 @@ mod graphics {
                 );
             }
         }
-        draw_circle(cx, cy, RAD, PENGUINGRAY);
+        draw_circle(cx, cy, RAD, PENGUINGRAY_DIM);
+        draw_circle(cx, cy, RAD / 1.5, PENGUINGRAY);
+        crate::draw_utils::draw_vclipped_circle(cx, cy, RAD, fill_fraction, PENGUINGRAY);
+        draw_circle_lines(cx, cy, RAD - 1.0, 2.0, PENGUINGRAY);
 
-        draw_ellipse(cx, cy + RAD * 0.4, RAD * 0.7, RAD * 0.4, 0.0, LIGHTGRAY);
+        draw_ellipse(cx, cy + RAD * 0.4, RAD * 0.65, RAD * 0.4, 0.0, LIGHTGRAY);
         draw_rectangle(cx - RAD * 0.6, cy - RAD * 0.2, RAD * 1.2, RAD * 0.4, PENGUINGRAY);
 
         {
