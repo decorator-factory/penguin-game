@@ -227,17 +227,17 @@ mod updates {
         Rect,
     };
 
-    const ROCKET_SPEED: f32 = 3.0;
-    const ROCKET_TTL: u16 = 240;
+    const ROCKET_SPEED: f32 = 2.7;
+    const ROCKET_TTL: u16 = 300;
     const ROCKET_SHOOT_COOLDOWN: u16 = 60;
 
-    const EXPLOSION_RADIUS: f32 = 48.0;
+    const EXPLOSION_RADIUS: f32 = 42.0;
     const EXPLOSION_TTL: u16 = 8;
-    const EXPLOSION_FORCE: f32 = 1.0;
+    const EXPLOSION_FORCE: f32 = 0.85;
 
-    const GRAVITY: f32 = 0.03;
-    const MAX_GRAVITY_SPEED: f32 = 10.;
-    const MAX_WALK_SPEED: f32 = 0.8;
+    const GRAVITY: f32 = 0.025;
+    const MAX_GRAVITY_SPEED: f32 = 8.;
+    const MAX_WALK_SPEED: f32 = 0.6;
 
     const FRICTION_AIR: f32 = 0.999;
     const FRICTION_GROUND: f32 = 0.98;
@@ -649,51 +649,51 @@ fn build_level() -> levels::Level {
             // Leftmost helper stump
             (vec2(160.0, -48.0), vec2(48.0, 48.0), tex_wood.clone().into()),
             // Leftmost house wall
-            (vec2(0.0, -360.0), vec2(64.0, 360.0), tex_bricks.clone().into()),
+            (vec2(0.0, -300.0), vec2(64.0, 300.0), tex_bricks.clone().into()),
             (vec2(-24.0, -1200.0), vec2(24.0, 1200.0), tex_bricks.clone().into()),
             // First bridge platform
-            (vec2(400.0, -596.0), vec2(432.0, 72.0), tex_bricks.clone().into()),
+            (vec2(400.0, -536.0), vec2(432.0, 72.0), tex_bricks.clone().into()),
             // Second bridge platform
-            (vec2(1000.0, -792.0), vec2(432.0, 72.0), tex_bricks.clone().into()),
+            (vec2(1000.0, -742.0), vec2(432.0, 72.0), tex_bricks.clone().into()),
             // Third bridge platform
-            (vec2(2000.0, -792.0), vec2(240.0, 72.0), tex_bricks.clone().into()),
+            (vec2(1800.0, -792.0), vec2(240.0, 72.0), tex_bricks.clone().into()),
             // Fourth bridge platform
-            (vec2(2700.0, -960.0), vec2(120.0, 72.0), tex_bricks.clone().into()),
+            (vec2(2300.0, -990.0), vec2(120.0, 72.0), tex_bricks.clone().into()),
             // Fifth bridge platform
-            (vec2(2000.0, -1248.0), vec2(432.0, 72.0), tex_bricks.clone().into()),
+            (vec2(1800.0, -1248.0), vec2(432.0, 72.0), tex_bricks.clone().into()),
             // Tower1 walls
-            (vec2(2000.0, -2400.0), vec2(12.0, 1200.0), tex_bricks.clone().into()),
-            (vec2(2420.0, -2400.0), vec2(12.0, 1060.0), tex_bricks.clone().into()),
+            (vec2(1800.0, -2350.0), vec2(12.0, 1150.0), tex_bricks.clone().into()),
+            (vec2(2220.0, -2350.0), vec2(12.0, 1010.0), tex_bricks.clone().into()),
             // Tower1 crazy ledge
-            (vec2(2156.0, -2200.0), vec2(120.0, 12.0), tex_bricks.clone().into()),
+            (vec2(1956.0, -2180.0), vec2(120.0, 12.0), tex_bricks.clone().into()),
             // Tower1 teeny weeny legs
-            (vec2(1978.0, -2400.0), vec2(22.0, 12.0), tex_bricks.clone().into()),
-            (vec2(2432.0, -2400.0), vec2(22.0, 12.0), tex_bricks.clone().into()),
+            (vec2(1778.0, -2350.0), vec2(22.0, 12.0), tex_bricks.clone().into()),
+            (vec2(2232.0, -2350.0), vec2(22.0, 12.0), tex_bricks.clone().into()),
             // Tower1 not so crazy ledge
-            (vec2(2156.0, -2720.0), vec2(120.0, 12.0), tex_bricks.clone().into()),
+            (vec2(1956.0, -2600.0), vec2(120.0, 12.0), tex_bricks.clone().into()),
         ],
         &[
             // Leftmost house roof
             (
-                &[vec2(0.0, -360.0), vec2(0.0, -480.0), vec2(64.0, -480.0), vec2(120.0, -360.0)],
+                &[vec2(0.0, -300.0), vec2(0.0, -420.0), vec2(64.0, -420.0), vec2(120.0, -300.0)],
                 tex_wood.clone().into(),
             ),
             // Tower roof
             (
                 &[
-                    vec2(1952.0, -2500.0),
-                    vec2(1964.0, -2500.0),
-                    vec2(2216.0, -3000.0),
-                    vec2(2216.0, -3024.0),
+                    vec2(1752.0, -2500.0),
+                    vec2(1764.0, -2500.0),
+                    vec2(2016.0, -3000.0),
+                    vec2(2016.0, -3024.0),
                 ],
                 tex_wood.clone().into(),
             ),
             (
                 &[
-                    vec2(2216.0, -3000.0),
-                    vec2(2216.0, -3024.0),
-                    vec2(2492.0, -2500.0),
-                    vec2(2480.0, -2500.0),
+                    vec2(2016.0, -3000.0),
+                    vec2(2016.0, -3024.0),
+                    vec2(2292.0, -2500.0),
+                    vec2(2280.0, -2500.0),
                 ],
                 tex_wood.clone().into(),
             ),
@@ -717,19 +717,19 @@ fn build_level() -> levels::Level {
             (vec2(1192.0, -720.0), vec2(48.0, 720.0), tex_bricks_dark.clone().into()),
             (vec2(1384.0, -720.0), vec2(48.0, 720.0), tex_bricks_dark.clone().into()),
             // Third bridge pillars
-            (vec2(2000.0, -720.0), vec2(48.0, 720.0), tex_bricks_dark.clone().into()),
-            (vec2(2192.0, -720.0), vec2(48.0, 720.0), tex_bricks_dark.clone().into()),
+            (vec2(1800.0, -720.0), vec2(48.0, 720.0), tex_bricks_dark.clone().into()),
+            (vec2(1992.0, -720.0), vec2(48.0, 720.0), tex_bricks_dark.clone().into()),
             // Fourth bridge pillars
-            (vec2(2736.0, -888.0), vec2(48.0, 888.0), tex_bricks_dark.clone().into()),
+            (vec2(2336.0, -990.0), vec2(48.0, 990.0), tex_bricks_dark.clone().into()),
             // Fifth bridge pillars
-            (vec2(2000.0, -1248.0), vec2(48.0, 1248.0), tex_bricks_dark.clone().into()),
-            (vec2(2384.0, -1248.0), vec2(48.0, 1248.0), tex_bricks_dark.clone().into()),
+            (vec2(1800.0, -1248.0), vec2(48.0, 1248.0), tex_bricks_dark.clone().into()),
+            (vec2(2184.0, -1248.0), vec2(48.0, 1248.0), tex_bricks_dark.clone().into()),
             // Tower1 sign1
-            (vec2(1800.0, -1600.0), vec2(200.0, 24.0), tex_wood_dark.clone().into()),
-            (vec2(1800.0, -1640.0), vec2(60.0, 120.0), tex_wood.clone().into()),
+            (vec2(1600.0, -1600.0), vec2(200.0, 24.0), tex_wood_dark.clone().into()),
+            (vec2(1600.0, -1640.0), vec2(60.0, 120.0), tex_wood.clone().into()),
         ],
         &[(
-            &[vec2(1770.0, -1640.0), vec2(1830.0, -1720.0), vec2(1890.0, -1640.0)],
+            &[vec2(1570.0, -1640.0), vec2(1630.0, -1720.0), vec2(1690.0, -1640.0)],
             tex_wood.clone().into(),
         )],
     );
