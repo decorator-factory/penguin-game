@@ -77,18 +77,25 @@ impl InputDevice for DemoPlayback {
     }
 
     fn next_frame(&mut self) {
-        self.frame += 1;
-
         if self.action_index >= self.movie.actions.len() {
             return;
         }
 
         loop {
             let Some((frame, action)) = self.movie.actions.get(self.action_index) else { return };
+
             if *frame == self.frame {
                 self.handle_action(*action);
                 self.action_index += 1;
+            } else if *frame <= self.frame {
+                debug_assert!(
+                    false,
+                    "At frame={frame}, action={action:?}: we're somehow past our next action"
+                );
+                self.frame = *frame;
+                self.handle_action(*action);
             } else {
+                self.frame += 1;
                 return;
             }
         }
@@ -110,9 +117,11 @@ pub struct DemoRecorder<D> {
     wrapped: D,
     current_frame: u64,
     shot_cooldown: u64,
+    look_cooldown: u64,
+    last_recorded_look: f32,
 }
 
-impl<D> DemoRecorder<D> {
+impl<D: InputDevice> DemoRecorder<D> {
     pub fn new(wrapped: D, starting_frame: u64) -> DemoRecorder<D> {
         DemoRecorder {
             actions: Vec::with_capacity(1024),
@@ -120,16 +129,55 @@ impl<D> DemoRecorder<D> {
             wrapped,
             current_frame: starting_frame,
             shot_cooldown: 0,
+            look_cooldown: 0,
+            last_recorded_look: 0.0,
         }
     }
 
     pub fn collect_recording(self) -> DemoMovie {
         DemoMovie::new(self.actions.into_boxed_slice())
     }
+
+    fn maybe_record_look_angle(&mut self) {
+        let mut record_look_degrees: Option<f32> = None;
+        let look_radians = self.wrapped.look_angle_radians();
+
+        if self.wrapped.is_input_down(Input::Shoot) {
+            if self.shot_cooldown == 0 {
+                if (self.last_recorded_look - look_radians).abs() > 0.001 {
+                    record_look_degrees = Some(look_radians.to_degrees());
+                    self.shot_cooldown = 20; // TODO: this is not a good solution
+                    self.look_cooldown = 30;
+                }
+            } else {
+                self.shot_cooldown -= 1;
+            }
+        } else {
+            self.shot_cooldown = 0;
+        }
+
+        if self.look_cooldown == 0 {
+            if (look_radians - self.last_recorded_look).abs() > 0.01 {
+                let deg = (look_radians.to_degrees() * 10.0).round() / 10.0;
+                record_look_degrees = Some(deg);
+                self.look_cooldown = 30;
+            }
+        } else {
+            self.look_cooldown -= 1;
+        }
+
+        if let Some(deg) = record_look_degrees {
+            self.last_recorded_look = look_radians;
+            self.actions.push((self.current_frame, DemoAction::SetLookAngle(deg)));
+        }
+    }
 }
 
 impl<D: InputDevice> InputDevice for DemoRecorder<D> {
     fn next_frame(&mut self) {
+        self.wrapped.next_frame();
+        self.maybe_record_look_angle();
+
         // When recording a new frame, consult the parent device to see
         // what changed and potentially record demo commands
         let mut to_on = EnumSet::new();
@@ -145,20 +193,6 @@ impl<D: InputDevice> InputDevice for DemoRecorder<D> {
             if !wrapped_on && self.current_inputs.contains(input) {
                 to_off |= input;
             }
-        }
-
-        if to_on.contains(Input::Shoot) || self.current_inputs.contains(Input::Shoot) {
-            if self.shot_cooldown == 0 {
-                let radians = self.wrapped.look_angle_radians();
-                self.actions
-                    .push((self.current_frame, DemoAction::SetLookAngle(radians.to_degrees())));
-                self.shot_cooldown = 16; // prevent spamming `look ...` when holding M1
-            // TODO: how do we keep this in sync with actual rocket cooldown?
-            } else {
-                self.shot_cooldown -= 1;
-            }
-        } else {
-            self.shot_cooldown = 0;
         }
 
         for input in to_on {
@@ -224,6 +258,13 @@ where
         Some(index) => (&slice[..index], &slice[index..]),
         None => (slice, &slice[slice.len()..]),
     }
+}
+
+#[allow(dead_code)]
+pub fn unparse_movie_to_string(movie: &DemoMovie) -> String {
+    let mut buf = Vec::with_capacity(1 << 10);
+    unparse_movie(movie, &mut buf).unwrap(); // Vec as std::io::Write never errors
+    String::from_utf8(buf).unwrap() // so far movies are supposed to be UTF-8
 }
 
 pub fn unparse_movie(movie: &DemoMovie, w: &mut impl std::io::Write) -> std::io::Result<()> {

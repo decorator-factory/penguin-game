@@ -11,7 +11,11 @@ pub enum Input {
 
 pub trait InputDevice {
     fn next_frame(&mut self);
+
+    /// This value should not change within a single frame
     fn is_input_down(&self, input: Input) -> bool;
+
+    /// This value should not change within a single frame
     fn look_angle_radians(&self) -> f32;
 
     fn device_info(&'_ self) -> Cow<'_, str>;

@@ -42,6 +42,7 @@ Usage:
     penguin-game demo [--input-file <path>]
     penguin-game record-demo --output-file <path>
     penguin-game keep-recording-demo --input-file <path> --output-file <path>
+    penguin-game re-record-demo --input-file <path> --output-file <path>
 ```
 
 - `penguin-game` starts the game as expected
@@ -66,6 +67,8 @@ Usage:
 - `penguin-game keep-recording-demo --input-file movie1.demo --output-file movie2.demo`
     starts out playing the demo movie in `movie1.demo`, and when it's done, records a new demo movie and puts that into `movie2.demo`. This allows you to record complicated demos in multiple sittings. Note that the demo in `movie2.demo` is incomplete, you'll have to append it to `movie1.demo` manually.
 
+- `penguin-game re-record-demo --input-file movie1.demo --output-file movie2.demo` plays a demo and records it into a demo.
+    it exists for re-encoding existing demos in a new format.
 
 ## TODO list
 

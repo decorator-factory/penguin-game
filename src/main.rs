@@ -1,3 +1,5 @@
+#![allow(clippy::print_stdout, clippy::print_stderr)]
+
 use std::{
     borrow::Cow,
     io::Read,
@@ -95,6 +97,7 @@ fn main() {
     macroquad::Window::from_config(conf, amain(args));
 }
 
+#[allow(clippy::too_many_lines)] // TODO: remove rampant duplication
 async fn amain(args: cli::Args) {
     fn try_read_demo_movie(input_path: &std::path::Path) -> Result<demo::DemoMovie, String> {
         let mut input_file = std::fs::File::open(input_path)
@@ -107,6 +110,7 @@ async fn amain(args: cli::Args) {
         demo::parse_movie(buf.as_ref())
             .map_err(|e| format!("Problem in demo file {}: {e}", input_path.display()))
     }
+    println!("Parsed arguments: {args:?}");
 
     match args {
         cli::Args::ShowHelp => unreachable!(),
@@ -150,6 +154,38 @@ async fn amain(args: cli::Args) {
             drop(file);
             println!("Wrote {} successfully!", output_path.display());
         }
+        cli::Args::ReRecordDemo { input_path, output_path } => {
+            // TODO: remove all this duplication
+            let input_movie = match try_read_demo_movie(&input_path) {
+                Ok(movie) => movie,
+                Err(e) => {
+                    eprintln!("{e}");
+                    std::process::exit(1);
+                }
+            };
+
+            let output_file =
+                std::fs::OpenOptions::new().write(true).create_new(true).open(&output_path);
+            let mut output_file = match output_file {
+                Ok(file) => file,
+                Err(e) => {
+                    eprintln!("Could not open output file {}: {e}", output_path.display());
+                    std::process::exit(1);
+                }
+            };
+
+            let mut device = demo::DemoRecorder::new(demo::DemoPlayback::new(input_movie), 0);
+            run_game(&mut device).await;
+            let output_movie = device.collect_recording();
+
+            if let Err(e) = demo::unparse_movie(&output_movie, &mut output_file) {
+                eprintln!("Failed to write demo movie to {}: {e}", output_path.display());
+                std::process::exit(1);
+            }
+            #[cfg_attr(target_family = "wasm", allow(clippy::drop_non_drop))]
+            drop(output_file);
+            println!("Wrote {} successfully!", output_path.display());
+        }
         cli::Args::KeepRecordingDemo { input_path, output_path } => {
             let input_movie = match try_read_demo_movie(&input_path) {
                 Ok(movie) => movie,
@@ -173,12 +209,8 @@ async fn amain(args: cli::Args) {
                 let threshold_frame = input_movie.last_frame().unwrap_or(0) + 1;
                 let playback = demo::DemoPlayback::new(input_movie);
                 let recorder = demo::DemoRecorder::new(input::MacroquadInput, threshold_frame);
-                input::ComposedInput::new(
-                    playback,
-                    recorder,
-                    threshold_frame,
-                    (Cow::Borrowed("playback"), Cow::Borrowed("recording")),
-                )
+                let names = (Cow::Borrowed("playback"), Cow::Borrowed("recording"));
+                input::ComposedInput::new(playback, recorder, threshold_frame, names)
             };
             run_game(&mut device).await;
             let output_movie = device.into_inner().1.collect_recording();
@@ -661,6 +693,7 @@ Usage:
     penguin-game demo [--input-file <path>]
     penguin-game record-demo --output-file <path>
     penguin-game keep-recording-demo --input-file <path> --output-file <path>
+    penguin-game re-record-demo --input-file <path> --output-file <path>
 
 See the README of the project for more details.";
 
@@ -672,6 +705,7 @@ See the README of the project for more details.";
         PlayDemo { input_path: Option<PathBuf> },
         RecordDemo { output_path: PathBuf },
         KeepRecordingDemo { input_path: PathBuf, output_path: PathBuf },
+        ReRecordDemo { input_path: PathBuf, output_path: PathBuf },
     }
 
     #[cfg(not(target_family = "wasm"))]
@@ -715,6 +749,11 @@ See the README of the project for more details.";
             "record-demo" => {
                 let output_path = pargs.value_from_os_str("--output-file", parse_path)?;
                 Ok(Args::RecordDemo { output_path })
+            }
+            "re-record-demo" => {
+                let input_path = pargs.value_from_os_str("--input-file", parse_path)?;
+                let output_path = pargs.value_from_os_str("--output-file", parse_path)?;
+                Ok(Args::ReRecordDemo { input_path, output_path })
             }
             "keep-recording-demo" => {
                 let input_path = pargs.value_from_os_str("--input-file", parse_path)?;
