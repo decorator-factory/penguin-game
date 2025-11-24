@@ -522,11 +522,17 @@ mod graphics {
 // Level stuff
 // TODO: make level editor
 
-fn make_wrapping_png_texture(png_bytes: &[u8]) -> Texture2D {
+macro_rules! include_with_name {
+    ($name:expr) => {
+        ($name, include_bytes!($name))
+    };
+}
+
+fn make_wrapping_png_texture((path, png_bytes): (&str, &[u8])) -> Texture2D {
     // SAFETY: internal context does not escape this function
     let ctx = unsafe { get_internal_gl() }.quad_context;
-    let img =
-        image::load_from_memory_with_format(png_bytes, ImageFormat::Png).expect("Invaild PNG ");
+    let img = image::load_from_memory_with_format(png_bytes, ImageFormat::Png)
+        .unwrap_or_else(|e| panic!("Could not read PNG from {path}: {e}"));
     let bytes = img.to_rgba8().into_raw();
 
     assert!(
@@ -544,11 +550,11 @@ fn make_wrapping_png_texture(png_bytes: &[u8]) -> Texture2D {
 }
 
 fn build_level() -> levels::Level {
-    let tex_bricks = make_wrapping_png_texture(include_bytes!("./assets/bricks.png"));
-    let tex_bricks_dark = make_wrapping_png_texture(include_bytes!("./assets/bricks_dark.png"));
-    let tex_wood = make_wrapping_png_texture(include_bytes!("./assets/wood.png"));
-    let tex_wood_dark = make_wrapping_png_texture(include_bytes!("./assets/wood_dark.png"));
-    let tex_arrow_left = make_wrapping_png_texture(include_bytes!("./assets/arrow_left.png"));
+    let tex_bricks = make_wrapping_png_texture(include_with_name!("./assets/bricks.png"));
+    let tex_bricks_dark = make_wrapping_png_texture(include_with_name!("./assets/bricks_dark.png"));
+    let tex_wood = make_wrapping_png_texture(include_with_name!("./assets/wood.png"));
+    let tex_wood_dark = make_wrapping_png_texture(include_with_name!("./assets/wood_dark.png"));
+    let tex_arrow_left = make_wrapping_png_texture(include_with_name!("./assets/arrow_left.png"));
 
     let level_width: f32 = 6000.0;
     let level_height: f32 = 12000.0;
