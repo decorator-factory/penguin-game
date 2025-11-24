@@ -2,7 +2,9 @@
 
 use std::{
     borrow::Cow,
+    fs::File,
     io::Read,
+    path::PathBuf,
 };
 
 use macroquad::prelude::*;
@@ -83,98 +85,107 @@ fn main() {
     };
 
     let args = match cli::parse_args() {
-        Ok(cli::Args::ShowHelp) => {
-            // do not open the game window
-            eprintln!("{}", cli::HELP);
-            std::process::exit(1);
-        }
         Ok(args) => args,
         Err(e) => {
             eprintln!("Invalid command-line arguments: {e}");
-            return;
+            std::process::exit(1);
         }
     };
+
+    let args = match RunArgs::from_cli_args(args) {
+        Ok(Some(args)) => args,
+        Ok(None) => {
+            println!("{}", cli::HELP);
+            return;
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+    };
+
     macroquad::Window::from_config(conf, amain(args));
 }
 
-#[allow(clippy::too_many_lines)] // TODO: remove rampant duplication
-async fn amain(args: cli::Args) {
-    fn try_read_demo_movie(input_path: &std::path::Path) -> Result<demo::DemoMovie, String> {
-        let mut input_file = std::fs::File::open(input_path)
-            .map_err(|e| format!("Could not open input file {}: {e}", input_path.display()))?;
+enum RunArgs {
+    JustPlay,
+    PlayDemo { in_movie: demo::DemoMovie },
+    RecordDemo { output_file: File, output_path: PathBuf },
+    ReRecordDemo { in_movie: demo::DemoMovie, output_file: File, output_path: PathBuf },
+    KeepRecordingDemo { in_movie: demo::DemoMovie, output_file: File, output_path: PathBuf },
+}
 
-        let mut buf = Vec::with_capacity(1 << 20);
-        if let Err(e) = input_file.read_to_end(&mut buf) {
-            return Err(format!("Could not read input file {}: {e}", input_path.display()));
+impl RunArgs {
+    fn from_cli_args(args: cli::Args) -> Result<Option<RunArgs>, String> {
+        match args {
+            cli::Args::ShowHelp => Ok(None),
+            cli::Args::JustPlay => Ok(Some(RunArgs::JustPlay)),
+            cli::Args::PlayDemo { input_path } => {
+                let in_movie = match input_path {
+                    Some(path) => try_read_demo_movie(&path)?,
+                    None => demo::make_default_demo_movie(),
+                };
+                Ok(Some(RunArgs::PlayDemo { in_movie }))
+            }
+            cli::Args::RecordDemo { output_path } => {
+                let output_file = try_create_exclusive_file(&output_path)?;
+                Ok(Some(RunArgs::RecordDemo { output_file, output_path }))
+            }
+            cli::Args::ReRecordDemo { input_path, output_path } => {
+                let in_movie = try_read_demo_movie(&input_path)?;
+                let output_file = try_create_exclusive_file(&output_path)?;
+                Ok(Some(RunArgs::ReRecordDemo { in_movie, output_file, output_path }))
+            }
+            cli::Args::KeepRecordingDemo { input_path, output_path } => {
+                let in_movie = try_read_demo_movie(&input_path)?;
+                let output_file = try_create_exclusive_file(&output_path)?;
+                Ok(Some(RunArgs::KeepRecordingDemo { in_movie, output_file, output_path }))
+            }
         }
-        demo::parse_movie(buf.as_ref())
-            .map_err(|e| format!("Problem in demo file {}: {e}", input_path.display()))
     }
-    println!("Parsed arguments: {args:?}");
+}
 
+fn try_read_demo_movie(input_path: &std::path::Path) -> Result<demo::DemoMovie, String> {
+    let mut input_file = File::open(input_path)
+        .map_err(|e| format!("Could not open input file {}: {e}", input_path.display()))?;
+
+    let mut buf = Vec::with_capacity(1 << 20);
+    if let Err(e) = input_file.read_to_end(&mut buf) {
+        return Err(format!("Could not read input file {}: {e}", input_path.display()));
+    }
+    demo::parse_movie(buf.as_ref())
+        .map_err(|e| format!("Problem in demo file {}: {e}", input_path.display()))
+}
+
+fn try_create_exclusive_file(output_path: &std::path::Path) -> Result<File, String> {
+    let file = std::fs::OpenOptions::new().write(true).create_new(true).open(output_path);
+    file.map_err(|e| format!("Could not open output file {}: {e}", output_path.display()))
+}
+
+async fn amain(args: RunArgs) {
     match args {
-        cli::Args::ShowHelp => unreachable!(),
-        cli::Args::JustPlay => {
+        RunArgs::JustPlay => {
             run_game(&mut input::MacroquadInput).await;
         }
-        cli::Args::PlayDemo { input_path } => {
-            let input_movie = match input_path {
-                Some(path) => match try_read_demo_movie(&path) {
-                    Ok(movie) => movie,
-                    Err(e) => {
-                        eprintln!("{e}");
-                        std::process::exit(1);
-                    }
-                },
-                None => demo::make_default_demo_movie(),
-            };
-
-            let mut device = demo::DemoPlayback::new(input_movie);
+        RunArgs::PlayDemo { in_movie } => {
+            let mut device = demo::DemoPlayback::new(in_movie);
             run_game(&mut device).await;
         }
-        cli::Args::RecordDemo { output_path } => {
-            let file = std::fs::OpenOptions::new().write(true).create_new(true).open(&output_path);
-            let mut file = match file {
-                Ok(file) => file,
-                Err(e) => {
-                    eprintln!("Could not open output file {}: {e}", output_path.display());
-                    std::process::exit(1);
-                }
-            };
-
+        RunArgs::RecordDemo { mut output_file, output_path } => {
             let mut device = demo::DemoRecorder::new(input::MacroquadInput, 0);
             run_game(&mut device).await;
             let movie = device.collect_recording();
 
-            if let Err(e) = demo::unparse_movie(&movie, &mut file) {
+            if let Err(e) = demo::unparse_movie(&movie, &mut output_file) {
                 eprintln!("Failed to write demo movie to {}: {e}", output_path.display());
                 std::process::exit(1);
             }
             #[cfg_attr(target_family = "wasm", allow(clippy::drop_non_drop))]
-            drop(file);
+            drop(output_file);
             println!("Wrote {} successfully!", output_path.display());
         }
-        cli::Args::ReRecordDemo { input_path, output_path } => {
-            // TODO: remove all this duplication
-            let input_movie = match try_read_demo_movie(&input_path) {
-                Ok(movie) => movie,
-                Err(e) => {
-                    eprintln!("{e}");
-                    std::process::exit(1);
-                }
-            };
-
-            let output_file =
-                std::fs::OpenOptions::new().write(true).create_new(true).open(&output_path);
-            let mut output_file = match output_file {
-                Ok(file) => file,
-                Err(e) => {
-                    eprintln!("Could not open output file {}: {e}", output_path.display());
-                    std::process::exit(1);
-                }
-            };
-
-            let mut device = demo::DemoRecorder::new(demo::DemoPlayback::new(input_movie), 0);
+        RunArgs::ReRecordDemo { in_movie, mut output_file, output_path } => {
+            let mut device = demo::DemoRecorder::new(demo::DemoPlayback::new(in_movie), 0);
             run_game(&mut device).await;
             let output_movie = device.collect_recording();
 
@@ -186,28 +197,10 @@ async fn amain(args: cli::Args) {
             drop(output_file);
             println!("Wrote {} successfully!", output_path.display());
         }
-        cli::Args::KeepRecordingDemo { input_path, output_path } => {
-            let input_movie = match try_read_demo_movie(&input_path) {
-                Ok(movie) => movie,
-                Err(e) => {
-                    eprintln!("{e}");
-                    std::process::exit(1);
-                }
-            };
-
-            let output_file =
-                std::fs::OpenOptions::new().write(true).create_new(true).open(&output_path);
-            let mut output_file = match output_file {
-                Ok(file) => file,
-                Err(e) => {
-                    eprintln!("Could not open output file {}: {e}", output_path.display());
-                    std::process::exit(1);
-                }
-            };
-
+        RunArgs::KeepRecordingDemo { in_movie, mut output_file, output_path } => {
             let mut device = {
-                let threshold_frame = input_movie.last_frame().unwrap_or(0) + 1;
-                let playback = demo::DemoPlayback::new(input_movie);
+                let threshold_frame = in_movie.last_frame().unwrap_or(0) + 1;
+                let playback = demo::DemoPlayback::new(in_movie);
                 let recorder = demo::DemoRecorder::new(input::MacroquadInput, threshold_frame);
                 let names = (Cow::Borrowed("playback"), Cow::Borrowed("recording"));
                 input::ComposedInput::new(playback, recorder, threshold_frame, names)
@@ -704,8 +697,8 @@ See the README of the project for more details.";
         JustPlay,
         PlayDemo { input_path: Option<PathBuf> },
         RecordDemo { output_path: PathBuf },
-        KeepRecordingDemo { input_path: PathBuf, output_path: PathBuf },
         ReRecordDemo { input_path: PathBuf, output_path: PathBuf },
+        KeepRecordingDemo { input_path: PathBuf, output_path: PathBuf },
     }
 
     #[cfg(not(target_family = "wasm"))]
