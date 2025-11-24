@@ -1,3 +1,4 @@
+use arrayvec::ArrayVec;
 use macroquad::prelude::*;
 
 #[derive(Debug, Clone)]
@@ -64,27 +65,35 @@ pub fn draw_textured_poly(points: &[Vec2], opts: impl Into<DrawOpts>) {
     gl.geometry(&vertices, &indices);
 }
 
-/// Draw a circle that's partially filled.
-/// `ratio` must be a value from 0 to 1
-#[expect(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+/// Draw a circle that's partially cut off on the top.
+/// `ratio` must be a value from 0 to 1.
 pub fn draw_vclipped_circle(x: f32, y: f32, radius: f32, ratio: f32, color: Color) {
+    use core::f32::consts::PI;
+
     debug_assert!(radius.is_finite() && radius >= 0.0, "invalid radius: {radius}");
     debug_assert!(ratio.is_finite() && (0.0..=1.0).contains(&ratio), "invalid ratio: {ratio}");
 
-    let target = render_target((radius * 2.0) as u32, (radius * 2.0) as u32);
-    push_camera_state();
-    let camera = Camera2D { render_target: Some(target), ..Default::default() };
-    set_camera(&camera);
-    draw_circle(0.0, 0.0, 1.0, color);
-    pop_camera_state();
-    let texture = camera.render_target.unwrap().texture;
+    let theta = (2.0 * ratio - 1.0).asin();
 
-    let y_offset = (1.0 - ratio) * radius * 2.0;
+    let mut points = ArrayVec::<Vec2, 22>::new();
 
-    draw_texture_ex(&texture, x - radius, y - radius + y_offset, WHITE, DrawTextureParams {
-        source: Some(Rect { x: 0.0, y: y_offset, w: radius * 2.0, h: radius * 2.0 - y_offset }),
-        ..Default::default()
-    });
+    let deltas: ArrayVec<(f32, f32), 10> = (0..10u8)
+        .map(|i| {
+            let (sin, cos) = theta.lerp(-PI / 2.0, f32::from(i) / 10.0).sin_cos();
+            (cos * radius, sin * radius)
+        })
+        .collect();
+
+    for &(dx, dy) in &deltas {
+        points.push(vec2(x + dx, y - dy));
+    }
+    points.push(vec2(x, y + radius));
+    for (dx, dy) in deltas.into_iter().rev() {
+        points.push(vec2(x - dx, y - dy));
+    }
+    points.push(points[0]);
+
+    draw_textured_poly(&points, color);
 }
 
 #[allow(dead_code, reason = "this function is useful for debugging")]
