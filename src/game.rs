@@ -703,7 +703,7 @@ fn build_level() -> levels::Level {
             (vec2(1778.0, -2350.0), vec2(22.0, 12.0), tex_bricks.clone().into()),
             (vec2(2232.0, -2350.0), vec2(22.0, 12.0), tex_bricks.clone().into()),
             // Tower1 not so crazy ledge
-            (vec2(1956.0, -2600.0), vec2(120.0, 12.0), tex_bricks.clone().into()),
+            (vec2(1800.0, -2600.0), vec2(276.0, 12.0), tex_bricks.clone().into()),
         ],
         &[
             // Leftmost house roof

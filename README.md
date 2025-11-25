@@ -10,7 +10,7 @@ This game is in very early development, but you can test it out in the browser:
 
 The available level is very short, intended to show the gist of the game. Your goal is to get to the platform inside the tower roof.
 
-![Penguin inside tower roof](image.png)
+![Penguin inside tower roof](screenshot.png)
 
 ## Controls
 
