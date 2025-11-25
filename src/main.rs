@@ -14,8 +14,6 @@ mod draw_utils;
 mod game;
 mod input;
 mod levels;
-#[cfg(not(target_family = "wasm"))]
-mod pico_args;
 mod wasm;
 
 fn main() {
@@ -29,25 +27,11 @@ fn main() {
         ..Default::default()
     };
 
-    let args = match cli::parse_args() {
-        Ok(args) => args,
-        Err(e) => {
-            eprintln!("Invalid command-line arguments: {e}");
-            std::process::exit(1);
-        }
-    };
-
-    let args = match RunArgs::from_cli_args(args) {
-        Ok(Some(args)) => args,
-        Ok(None) => {
-            println!("{}", cli::HELP);
-            return;
-        }
-        Err(e) => {
-            eprintln!("{e}");
-            std::process::exit(1);
-        }
-    };
+    let args = cli::parse_args_or_die();
+    let args = RunArgs::from_cli_args(args).unwrap_or_else(|e| {
+        eprintln!("{e}");
+        std::process::exit(1);
+    });
 
     macroquad::Window::from_config(conf, amain(args));
 }
@@ -61,30 +45,29 @@ enum RunArgs {
 }
 
 impl RunArgs {
-    fn from_cli_args(args: cli::Args) -> Result<Option<RunArgs>, String> {
+    fn from_cli_args(args: cli::Args) -> Result<RunArgs, String> {
         match args {
-            cli::Args::ShowHelp => Ok(None),
-            cli::Args::JustPlay => Ok(Some(RunArgs::JustPlay)),
+            cli::Args::JustPlay => Ok(RunArgs::JustPlay),
             cli::Args::PlayDemo { input_path } => {
                 let in_movie = match input_path {
                     Some(path) => try_read_demo_movie(&path)?,
                     None => demo::make_default_demo_movie(),
                 };
-                Ok(Some(RunArgs::PlayDemo { in_movie }))
+                Ok(RunArgs::PlayDemo { in_movie })
             }
             cli::Args::RecordDemo { output_path } => {
                 let output_file = try_create_exclusive_file(&output_path)?;
-                Ok(Some(RunArgs::RecordDemo { output_file, output_path }))
+                Ok(RunArgs::RecordDemo { output_file, output_path })
             }
             cli::Args::ReRecordDemo { input_path, output_path } => {
                 let in_movie = try_read_demo_movie(&input_path)?;
                 let output_file = try_create_exclusive_file(&output_path)?;
-                Ok(Some(RunArgs::ReRecordDemo { in_movie, output_file, output_path }))
+                Ok(RunArgs::ReRecordDemo { in_movie, output_file, output_path })
             }
             cli::Args::KeepRecordingDemo { input_path, output_path } => {
                 let in_movie = try_read_demo_movie(&input_path)?;
                 let output_file = try_create_exclusive_file(&output_path)?;
-                Ok(Some(RunArgs::KeepRecordingDemo { in_movie, output_file, output_path }))
+                Ok(RunArgs::KeepRecordingDemo { in_movie, output_file, output_path })
             }
         }
     }
@@ -167,22 +150,16 @@ async fn amain(args: RunArgs) {
 mod cli {
     use std::path::PathBuf;
 
-    pub const HELP: &str = "\
-penguin-game
-
-Usage:
-    penguin-game
-    penguin-game demo [--input-file <path>]
-    penguin-game record-demo --output-file <path>
-    penguin-game keep-recording-demo --input-file <path> --output-file <path>
-    penguin-game re-record-demo --input-file <path> --output-file <path>
-
-See the README of the project for more details.";
+    #[cfg(not(target_family = "wasm"))]
+    use clap::{
+        Arg,
+        Command,
+        builder::ValueParser,
+    };
 
     #[cfg_attr(target_family = "wasm", allow(dead_code))]
     #[derive(Debug)]
     pub enum Args {
-        ShowHelp,
         JustPlay,
         PlayDemo { input_path: Option<PathBuf> },
         RecordDemo { output_path: PathBuf },
@@ -191,68 +168,88 @@ See the README of the project for more details.";
     }
 
     #[cfg(not(target_family = "wasm"))]
-    #[derive(thiserror::Error, Debug)]
-    pub enum CliError {
-        #[error("Expected a subcommand")]
-        ExpectedSubcommand,
-        #[error("Unknown subcommand: {0}")]
-        UnknownSubcommand(String),
-        #[error("{0}")]
-        PicoArgs(#[from] crate::pico_args::PicoError),
-    }
-
-    #[cfg(not(target_family = "wasm"))]
-    pub fn parse_args() -> Result<Args, CliError> {
-        #[allow(clippy::unnecessary_wraps)]
-        fn parse_path(s: &std::ffi::OsStr) -> Result<PathBuf, &'static str> {
-            Ok(s.into())
-        }
-
-        let mut pargs = crate::pico_args::Arguments::from_env();
-
-        if pargs.contains(["-h", "--help"]) {
-            return Ok(Args::ShowHelp);
-        }
-
-        let Some(subcommand) = pargs.subcommand()? else {
-            if pargs.0.is_empty() {
-                return Ok(Args::JustPlay);
-            } else {
-                return Err(CliError::ExpectedSubcommand);
-            }
+    pub fn parse_args_or_die() -> Args {
+        let output_file_arg = || {
+            Arg::new("output_file")
+                .short('o')
+                .long("output-file")
+                .value_name("path")
+                .required(true)
+                .value_parser(ValueParser::path_buf())
         };
+        let input_file_arg = || {
+            Arg::new("input_file")
+                .short('i')
+                .long("input-file")
+                .value_name("path")
+                .required(true)
+                .value_parser(ValueParser::path_buf())
+        };
+        let matches = Command::new("penguin-game")
+            .version("v0.0")
+            .about(
+                "A 2D platformer game where you rocket jump as a penguin. \
+                See the README at https://github.com/decorator-factory/penguin-game \
+                for extended CLI help.",
+            )
+            .propagate_version(true)
+            .subcommand_required(true)
+            .arg_required_else_help(true)
+            .subcommand(Command::new("play").about("Play the game normally"))
+            .subcommand(
+                Command::new("demo")
+                    .about("Play back a demo movie")
+                    .arg(input_file_arg().required(false)),
+            )
+            .subcommand(
+                Command::new("record-demo")
+                    .about("Record a demo movie and save it to a file when the game is closed")
+                    .arg(output_file_arg()),
+            )
+            .subcommand(
+                Command::new("keep-recording-demo")
+                    .about(
+                        "Play a demo from `input-file`, then record a demo movie fragment \
+                            and save it to `output-file`",
+                    )
+                    .arg(input_file_arg())
+                    .arg(output_file_arg()),
+            )
+            .subcommand(
+                Command::new("re-record-demo")
+                    .about(
+                        "Play back a demo from `input-file` and also record it, \
+                        saving it to `output-file`",
+                    )
+                    .arg(input_file_arg())
+                    .arg(output_file_arg()),
+            )
+            .get_matches();
 
-        match subcommand.as_ref() {
-            "play" => Ok(Args::JustPlay),
-            "demo" => {
-                let input_path = pargs.opt_value_from_os_str("--input-file", parse_path)?;
-                Ok(Args::PlayDemo { input_path })
-            }
-            "record-demo" => {
-                let output_path = pargs.value_from_os_str("--output-file", parse_path)?;
-                Ok(Args::RecordDemo { output_path })
-            }
-            "re-record-demo" => {
-                let input_path = pargs.value_from_os_str("--input-file", parse_path)?;
-                let output_path = pargs.value_from_os_str("--output-file", parse_path)?;
-                Ok(Args::ReRecordDemo { input_path, output_path })
-            }
-            "keep-recording-demo" => {
-                let input_path = pargs.value_from_os_str("--input-file", parse_path)?;
-                let output_path = pargs.value_from_os_str("--output-file", parse_path)?;
-                Ok(Args::KeepRecordingDemo { input_path, output_path })
-            }
-            s => Err(CliError::UnknownSubcommand(s.to_string())),
+        match matches.subcommand().unwrap() {
+            ("play", _) => Args::JustPlay,
+            ("demo", args) => Args::PlayDemo { input_path: args.get_one("input_file").cloned() },
+            ("record-demo", args) => Args::RecordDemo {
+                output_path: args.get_one::<PathBuf>("output_file").unwrap().clone(),
+            },
+            ("keep-recording-demo", args) => Args::KeepRecordingDemo {
+                input_path: args.get_one::<PathBuf>("input_file").unwrap().clone(),
+                output_path: args.get_one::<PathBuf>("output_file").unwrap().clone(),
+            },
+            ("re-record-demo", args) => Args::ReRecordDemo {
+                input_path: args.get_one::<PathBuf>("input_file").unwrap().clone(),
+                output_path: args.get_one::<PathBuf>("output_file").unwrap().clone(),
+            },
+            _ => unreachable!(),
         }
     }
 
     #[cfg(target_family = "wasm")]
-    #[allow(clippy::unnecessary_wraps)]
-    pub fn parse_args() -> Result<Args, &'static str> {
-        Ok(if crate::wasm::is_wasm_demo() {
+    pub fn parse_args_or_die() -> Args {
+        if crate::wasm::is_wasm_demo() {
             Args::PlayDemo { input_path: None }
         } else {
             Args::JustPlay
-        })
+        }
     }
 }

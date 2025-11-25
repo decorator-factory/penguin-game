@@ -7,7 +7,6 @@ edition = "2024"
 lto = "thin"
 codegen-units = 1
 opt-level = "s"
-strip = "symbols"
 
 [dependencies]
 glam = { version = "0.27", default-features = false, features = [
@@ -24,6 +23,7 @@ parry2d = { version = "0.25", default-features = false, features = [
 image = { version = "0.24", default-features = false, features = ["png"] }
 thiserror = "2"
 enumset = "=1.1.10"
+clap = { version = "4.5.53", default-features = false, features = ["std", "help", "usage", "error-context"] }
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
