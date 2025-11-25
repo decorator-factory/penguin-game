@@ -101,7 +101,7 @@ pub async fn run_game(device: &mut impl crate::input::InputDevice) {
     // Handling the quit event manually allows us to save the demo recording
     prevent_quit();
     while !is_quit_requested() {
-        if is_key_down(KeyCode::R) {
+        if is_key_pressed(KeyCode::R) {
             speed_up = !speed_up;
         }
 
