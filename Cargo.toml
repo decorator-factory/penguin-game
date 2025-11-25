@@ -52,7 +52,6 @@ map_with_unused_argument_over_ranges = "deny"
 missing_assert_message = "deny"
 missing_asserts_for_indexing = "warn"  # turn it off if it gets too noisy
 mixed_read_write_in_expression = "deny"
-mod_module_files = "deny"
 multiple_inherent_impl = "deny"
 mutex_atomic = "warn"
 needless_raw_strings = "deny"

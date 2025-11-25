@@ -1,3 +1,4 @@
 /target
-*.tiled-session
 *.wasm
+*.tiled-session
+.python-version

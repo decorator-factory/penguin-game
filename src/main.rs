@@ -12,6 +12,7 @@ use macroquad::prelude::*;
 mod demo;
 mod draw_utils;
 mod game;
+mod generated_levels;
 mod input;
 mod levels;
 mod wasm;
@@ -37,7 +38,7 @@ fn main() {
 }
 
 enum RunArgs {
-    JustPlay,
+    JustPlay { new_level: bool },
     PlayDemo { in_movie: demo::DemoMovie },
     RecordDemo { output_file: File, output_path: PathBuf },
     ReRecordDemo { in_movie: demo::DemoMovie, output_file: File, output_path: PathBuf },
@@ -47,7 +48,7 @@ enum RunArgs {
 impl RunArgs {
     fn from_cli_args(args: cli::Args) -> Result<RunArgs, String> {
         match args {
-            cli::Args::JustPlay => Ok(RunArgs::JustPlay),
+            cli::Args::JustPlay { new_level } => Ok(RunArgs::JustPlay { new_level }),
             cli::Args::PlayDemo { input_path } => {
                 let in_movie = match input_path {
                     Some(path) => try_read_demo_movie(&path)?,
@@ -94,16 +95,16 @@ async fn amain(args: RunArgs) {
     fix_panic_handling();
 
     match args {
-        RunArgs::JustPlay => {
-            game::run_game(&mut input::MacroquadInput).await;
+        RunArgs::JustPlay { new_level } => {
+            game::run_game(&mut input::MacroquadInput, new_level).await;
         }
         RunArgs::PlayDemo { in_movie } => {
             let mut device = demo::DemoPlayback::new(in_movie);
-            game::run_game(&mut device).await;
+            game::run_game(&mut device, false).await;
         }
         RunArgs::RecordDemo { mut output_file, output_path } => {
             let mut device = demo::DemoRecorder::new(input::MacroquadInput, 0);
-            game::run_game(&mut device).await;
+            game::run_game(&mut device, false).await;
             let movie = device.collect_recording();
 
             if let Err(e) = demo::unparse_movie(&movie, &mut output_file) {
@@ -116,7 +117,7 @@ async fn amain(args: RunArgs) {
         }
         RunArgs::ReRecordDemo { in_movie, mut output_file, output_path } => {
             let mut device = demo::DemoRecorder::new(demo::DemoPlayback::new(in_movie), 0);
-            game::run_game(&mut device).await;
+            game::run_game(&mut device, false).await;
             let output_movie = device.collect_recording();
 
             if let Err(e) = demo::unparse_movie(&output_movie, &mut output_file) {
@@ -135,7 +136,7 @@ async fn amain(args: RunArgs) {
                 let names = (Cow::Borrowed("playback"), Cow::Borrowed("recording"));
                 input::ComposedInput::new(playback, recorder, threshold_upd, names)
             };
-            game::run_game(&mut device).await;
+            game::run_game(&mut device, false).await;
             let output_movie = device.into_inner().1.collect_recording();
 
             if let Err(e) = demo::unparse_movie(&output_movie, &mut output_file) {
@@ -180,6 +181,7 @@ mod cli {
     #[cfg(not(target_family = "wasm"))]
     use clap::{
         Arg,
+        ArgAction,
         Command,
         builder::ValueParser,
     };
@@ -187,7 +189,7 @@ mod cli {
     #[cfg_attr(target_family = "wasm", allow(dead_code))]
     #[derive(Debug)]
     pub enum Args {
-        JustPlay,
+        JustPlay { new_level: bool },
         PlayDemo { input_path: Option<PathBuf> },
         RecordDemo { output_path: PathBuf },
         ReRecordDemo { input_path: PathBuf, output_path: PathBuf },
@@ -222,7 +224,11 @@ mod cli {
             .propagate_version(true)
             .subcommand_required(true)
             .arg_required_else_help(true)
-            .subcommand(Command::new("play").about("Play the game normally"))
+            .subcommand(
+                Command::new("play")
+                    .about("Play the game normally")
+                    .arg(Arg::new("new_level").long("new-level").action(ArgAction::SetTrue)),
+            )
             .subcommand(
                 Command::new("demo")
                     .about("Play back a demo movie")
@@ -254,7 +260,7 @@ mod cli {
             .get_matches();
 
         match matches.subcommand().unwrap() {
-            ("play", _) => Args::JustPlay,
+            ("play", args) => Args::JustPlay { new_level: *args.get_one("new_level").unwrap() },
             ("demo", args) => Args::PlayDemo { input_path: args.get_one("input_file").cloned() },
             ("record-demo", args) => Args::RecordDemo {
                 output_path: args.get_one::<PathBuf>("output_file").unwrap().clone(),
@@ -276,7 +282,7 @@ mod cli {
         if crate::wasm::is_wasm_demo() {
             Args::PlayDemo { input_path: None }
         } else {
-            Args::JustPlay
+            Args::JustPlay { new_level: crate::wasm::is_wasm_new_level() }
         }
     }
 }

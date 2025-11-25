@@ -1,5 +1,8 @@
 use std::{
-    collections::VecDeque,
+    collections::{
+        HashMap,
+        VecDeque,
+    },
     fmt::Write,
 };
 
@@ -7,7 +10,10 @@ use macroquad::prelude::*;
 use miniquad::TextureWrap;
 use parry2d::shape::ConvexPolygon;
 
-use crate::levels;
+use crate::{
+    draw_utils::DrawOpts,
+    levels,
+};
 
 const UPS_NORMAL: f64 = 240.;
 const UPS_FAST: f64 = 1200.;
@@ -63,9 +69,7 @@ impl std::fmt::Debug for GameState {
 }
 
 impl GameState {
-    fn new() -> GameState {
-        let level = build_level();
-
+    fn new(level: levels::Level) -> GameState {
         let penguin = Penguin {
             pos: level.start_pos(),
             vel: Vec2::ZERO,
@@ -84,8 +88,15 @@ impl GameState {
     }
 }
 
-pub async fn run_game(device: &mut impl crate::input::InputDevice) {
-    let mut state = GameState::new();
+pub async fn run_game(device: &mut impl crate::input::InputDevice, new_level: bool) {
+    let level = if new_level {
+        // this is very MVP quality...
+        let builder = levels::LevelBuilder::new(load_textures());
+        crate::generated_levels::level_test::build(builder)
+    } else {
+        build_default_level()
+    };
+    let mut state = GameState::new(level);
 
     macroquad::logging::info!("Initialized penguin-game state!");
 
@@ -117,12 +128,12 @@ pub async fn run_game(device: &mut impl crate::input::InputDevice) {
         let ups = if speed_up { UPS_FAST } else { UPS_NORMAL };
         let update_time = 1.0 / ups;
         if time_bank >= update_time * 60.0 {
+            // We "bankrupt" the time bank and assume we have 1 update left to do.
             // This can happen due to several reasons:
             // - lag spikes in other programs
             // - using very high UPS (like when pressing R) using a debug build and a low end device
             // - on Linux I only get one update per second when the application is minimized
             // and we don't want to run a million updates in a single frame
-            macroquad::logging::warn!("time bank bankrupcy");
             time_bank = update_time;
         }
 
@@ -660,6 +671,19 @@ macro_rules! include_with_name {
     };
 }
 
+#[rustfmt::skip]
+fn load_textures() -> HashMap<&'static str, DrawOpts> {
+    HashMap::from([
+        ("arrow_left", make_wrapping_png_texture(include_with_name!("./assets/arrow_left.png")).into()),
+        ("barrier", make_wrapping_png_texture(include_with_name!("./assets/barrier.png")).into()),
+        ("bricks", make_wrapping_png_texture(include_with_name!("./assets/bricks.png")).into()),
+        ("bricks_dark", make_wrapping_png_texture(include_with_name!("./assets/bricks_dark.png")).into()),
+        ("caution", make_wrapping_png_texture(include_with_name!("./assets/caution.png")).into()),
+        ("wood", make_wrapping_png_texture(include_with_name!("./assets/wood.png")).into()),
+        ("wood_dark", make_wrapping_png_texture(include_with_name!("./assets/wood_dark.png")).into()),
+    ])
+}
+
 fn make_wrapping_png_texture((path, png_bytes): (&str, &[u8])) -> Texture2D {
     // SAFETY: internal context does not escape this function
     let ctx = unsafe { get_internal_gl() }.quad_context;
@@ -681,12 +705,8 @@ fn make_wrapping_png_texture((path, png_bytes): (&str, &[u8])) -> Texture2D {
     Texture2D::from_miniquad_texture(texture_id)
 }
 
-fn build_level() -> levels::Level {
-    let tex_bricks = make_wrapping_png_texture(include_with_name!("./assets/bricks.png"));
-    let tex_bricks_dark = make_wrapping_png_texture(include_with_name!("./assets/bricks_dark.png"));
-    let tex_wood = make_wrapping_png_texture(include_with_name!("./assets/wood.png"));
-    let tex_wood_dark = make_wrapping_png_texture(include_with_name!("./assets/wood_dark.png"));
-    let tex_arrow_left = make_wrapping_png_texture(include_with_name!("./assets/arrow_left.png"));
+fn build_default_level() -> levels::Level {
+    let tex = load_textures();
 
     let level_width: f32 = 6000.0;
     let level_height: f32 = 12000.0;
@@ -695,57 +715,57 @@ fn build_level() -> levels::Level {
         vec2(240.0, -48.0),
         &[
             // Arrow floor
-            (vec2(0.0, 0.0), vec2(level_width, 32.0), tex_arrow_left.clone().into()),
+            (vec2(0.0, 0.0), vec2(level_width, 32.0), tex["arrow_left"].clone()),
             // Leftmost helper stump
-            (vec2(160.0, -48.0), vec2(48.0, 48.0), tex_wood.clone().into()),
+            (vec2(160.0, -48.0), vec2(48.0, 48.0), tex["wood"].clone()),
             // Leftmost house wall
-            (vec2(0.0, -300.0), vec2(64.0, 300.0), tex_bricks.clone().into()),
-            (vec2(-24.0, -1200.0), vec2(24.0, 1200.0), tex_bricks.clone().into()),
+            (vec2(0.0, -300.0), vec2(64.0, 300.0), tex["bricks"].clone()),
+            (vec2(-24.0, -1200.0), vec2(24.0, 1200.0), tex["bricks"].clone()),
             // First bridge platform
-            (vec2(400.0, -536.0), vec2(432.0, 72.0), tex_bricks.clone().into()),
+            (vec2(400.0, -536.0), vec2(432.0, 72.0), tex["bricks"].clone()),
             // Second bridge platform
-            (vec2(1000.0, -742.0), vec2(432.0, 72.0), tex_bricks.clone().into()),
+            (vec2(1000.0, -742.0), vec2(432.0, 72.0), tex["bricks"].clone()),
             // Third bridge platform
-            (vec2(1800.0, -792.0), vec2(240.0, 72.0), tex_bricks.clone().into()),
+            (vec2(1800.0, -792.0), vec2(240.0, 72.0), tex["bricks"].clone()),
             // Fourth bridge platform
-            (vec2(2300.0, -990.0), vec2(120.0, 72.0), tex_bricks.clone().into()),
+            (vec2(2300.0, -990.0), vec2(120.0, 72.0), tex["bricks"].clone()),
             // Fifth bridge platform
-            (vec2(1800.0, -1248.0), vec2(432.0, 72.0), tex_bricks.clone().into()),
+            (vec2(1800.0, -1248.0), vec2(432.0, 72.0), tex["bricks"].clone()),
             // Tower1 walls
-            (vec2(1800.0, -2350.0), vec2(12.0, 1150.0), tex_bricks.clone().into()),
-            (vec2(2220.0, -2350.0), vec2(12.0, 1010.0), tex_bricks.clone().into()),
+            (vec2(1800.0, -2350.0), vec2(12.0, 1150.0), tex["bricks"].clone()),
+            (vec2(2220.0, -2350.0), vec2(12.0, 1010.0), tex["bricks"].clone()),
             // Tower1 crazy ledge
-            (vec2(1956.0, -2180.0), vec2(120.0, 12.0), tex_bricks.clone().into()),
+            (vec2(1956.0, -2180.0), vec2(120.0, 12.0), tex["bricks"].clone()),
             // Tower1 teeny weeny legs
-            (vec2(1778.0, -2350.0), vec2(22.0, 12.0), tex_bricks.clone().into()),
-            (vec2(2232.0, -2350.0), vec2(22.0, 12.0), tex_bricks.clone().into()),
+            (vec2(1778.0, -2350.0), vec2(22.0, 12.0), tex["bricks"].clone()),
+            (vec2(2232.0, -2350.0), vec2(22.0, 12.0), tex["bricks"].clone()),
             // Tower1 not so crazy ledge
-            (vec2(1800.0, -2600.0), vec2(276.0, 12.0), tex_bricks.clone().into()),
+            (vec2(1800.0, -2600.0), vec2(276.0, 12.0), tex["bricks"].clone()),
         ],
         &[
             // Leftmost house roof
             (
-                &[vec2(0.0, -300.0), vec2(0.0, -420.0), vec2(64.0, -420.0), vec2(120.0, -300.0)],
-                tex_wood.clone().into(),
+                vec![vec2(0.0, -300.0), vec2(0.0, -420.0), vec2(64.0, -420.0), vec2(120.0, -300.0)],
+                tex["wood"].clone(),
             ),
             // Tower roof
             (
-                &[
+                vec![
                     vec2(1752.0, -2500.0),
                     vec2(1764.0, -2500.0),
                     vec2(2016.0, -3000.0),
                     vec2(2016.0, -3024.0),
                 ],
-                tex_wood.clone().into(),
+                tex["wood"].clone(),
             ),
             (
-                &[
+                vec![
                     vec2(2016.0, -3000.0),
                     vec2(2016.0, -3024.0),
                     vec2(2292.0, -2500.0),
                     vec2(2280.0, -2500.0),
                 ],
-                tex_wood.clone().into(),
+                tex["wood"].clone(),
             ),
         ],
     );
@@ -759,28 +779,28 @@ fn build_level() -> levels::Level {
     level.insert_graphics(
         &[
             // First bridge pillars
-            (vec2(400.0, -524.0), vec2(48.0, 524.0), tex_bricks_dark.clone().into()),
-            (vec2(592.0, -524.0), vec2(48.0, 524.0), tex_bricks_dark.clone().into()),
-            (vec2(784.0, -524.0), vec2(48.0, 524.0), tex_bricks_dark.clone().into()),
+            (vec2(400.0, -524.0), vec2(48.0, 524.0), tex["bricks_dark"].clone()),
+            (vec2(592.0, -524.0), vec2(48.0, 524.0), tex["bricks_dark"].clone()),
+            (vec2(784.0, -524.0), vec2(48.0, 524.0), tex["bricks_dark"].clone()),
             // Second bridge pillars
-            (vec2(1000.0, -720.0), vec2(48.0, 720.0), tex_bricks_dark.clone().into()),
-            (vec2(1192.0, -720.0), vec2(48.0, 720.0), tex_bricks_dark.clone().into()),
-            (vec2(1384.0, -720.0), vec2(48.0, 720.0), tex_bricks_dark.clone().into()),
+            (vec2(1000.0, -720.0), vec2(48.0, 720.0), tex["bricks_dark"].clone()),
+            (vec2(1192.0, -720.0), vec2(48.0, 720.0), tex["bricks_dark"].clone()),
+            (vec2(1384.0, -720.0), vec2(48.0, 720.0), tex["bricks_dark"].clone()),
             // Third bridge pillars
-            (vec2(1800.0, -720.0), vec2(48.0, 720.0), tex_bricks_dark.clone().into()),
-            (vec2(1992.0, -720.0), vec2(48.0, 720.0), tex_bricks_dark.clone().into()),
+            (vec2(1800.0, -720.0), vec2(48.0, 720.0), tex["bricks_dark"].clone()),
+            (vec2(1992.0, -720.0), vec2(48.0, 720.0), tex["bricks_dark"].clone()),
             // Fourth bridge pillars
-            (vec2(2336.0, -990.0), vec2(48.0, 990.0), tex_bricks_dark.clone().into()),
+            (vec2(2336.0, -990.0), vec2(48.0, 990.0), tex["bricks_dark"].clone()),
             // Fifth bridge pillars
-            (vec2(1800.0, -1248.0), vec2(48.0, 1248.0), tex_bricks_dark.clone().into()),
-            (vec2(2184.0, -1248.0), vec2(48.0, 1248.0), tex_bricks_dark.clone().into()),
+            (vec2(1800.0, -1248.0), vec2(48.0, 1248.0), tex["bricks_dark"].clone()),
+            (vec2(2184.0, -1248.0), vec2(48.0, 1248.0), tex["bricks_dark"].clone()),
             // Tower1 sign1
-            (vec2(1600.0, -1600.0), vec2(200.0, 24.0), tex_wood_dark.clone().into()),
-            (vec2(1600.0, -1640.0), vec2(60.0, 120.0), tex_wood.clone().into()),
+            (vec2(1600.0, -1600.0), vec2(200.0, 24.0), tex["wood_dark"].clone()),
+            (vec2(1600.0, -1640.0), vec2(60.0, 120.0), tex["wood"].clone()),
         ],
         &[(
-            &[vec2(1570.0, -1640.0), vec2(1630.0, -1720.0), vec2(1690.0, -1640.0)],
-            tex_wood.clone().into(),
+            vec![vec2(1570.0, -1640.0), vec2(1630.0, -1720.0), vec2(1690.0, -1640.0)],
+            tex["wood"].clone(),
         )],
     );
 

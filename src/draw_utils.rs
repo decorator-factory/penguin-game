@@ -37,24 +37,16 @@ pub fn draw_textured_poly(points: &[Vec2], opts: impl Into<DrawOpts>) {
     let mut vertices = Vec::<Vertex>::with_capacity(points.len());
     let mut indices = Vec::<u16>::with_capacity(points.len() * 3);
 
-    let (min_x, min_y) = {
-        let (mut min_x, mut min_y) = (f32::MAX, f32::MAX);
-        for &Vec2 { x, y } in points {
-            min_x = min_x.min(x);
-            min_y = min_y.min(y);
-        }
-        (min_x, min_y)
-    };
-
     // what's a few clone() calls between friends
     let DrawOpts(color, texture) = opts.into().clone();
 
     for (i, point) in points.iter().enumerate() {
-        let (dx, dy) = (point.x - min_x, point.y - min_y);
-        let (u, v) = (dx / texture.width(), dy / texture.height());
+        // TODO: right now we draw all textures as if they started repeating at (0, 0)
+        // Should we add an option to repeat them as if they started at (x, y)?
+        let (u, v) = (point.x / texture.width(), point.y / texture.height());
         vertices.push(Vertex::new(point.x, point.y, 0., u, v, color));
 
-        #[allow(clippy::cast_possible_truncation, reason = "see debug_assert")]
+        #[expect(clippy::cast_possible_truncation, reason = "see debug_assert")]
         if i != 0 && i != points.len() - 1 {
             indices.extend_from_slice(&[0, i as u16, i as u16 + 1]);
         }

@@ -20,7 +20,10 @@ The rules are simple: shoot a rocket under your feet, and the explosion blasts y
 - `D`: Go Right
 - Mouse cursor: aim the rocket launcher
 - Left mouse button: shoot rocket
+
+Debug controls:
 - `R`: speed up the game 5 times (for debugging and demo development purposes)
+- `P`: crash the game
 
 If you get stuck, see how the demo penguin completes the level.
 
@@ -38,14 +41,14 @@ If you want to build a faster release executable, run `cargo build --release` an
 penguin-game
 
 Usage:
-    penguin-game
+    penguin-game play [--new-level]
     penguin-game demo [--input-file <path>]
     penguin-game record-demo --output-file <path>
     penguin-game keep-recording-demo --input-file <path> --output-file <path>
     penguin-game re-record-demo --input-file <path> --output-file <path>
 ```
 
-- `penguin-game` starts the game as expected
+- `penguin-game play` starts the game as expected
 - `penguin-game demo` shows a demo movie; if no input is provided, the built-in demo movie (found in `demos/intended.demo`) is played
 - `penguin-game record-demo --output-file movie.demo` records a demo movie and outputs it to `movie.demo` (that file must not already exist). The demo is saved in a simple text format that you can tweak yourself.
 
@@ -83,3 +86,16 @@ Usage:
 - Props, signs and other world objects to make the levels nice and intuitive
 
 - Sounds
+
+## Development
+
+1. `cargo build`
+1. `cargo test`
+1. `cargo clippy --target wasm32-unknown-unknown`
+1. `cargo clippy`
+1. `cargo clippy --target wasm32-unknown-unknown`
+1. `cargo run -- play`
+
+Auto-format code with `cargo +nightly fmt`.
+
+Note that to update the levels, you currently need to consult `tiled/README.md`.

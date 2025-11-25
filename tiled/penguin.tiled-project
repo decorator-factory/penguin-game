@@ -1,0 +1,61 @@
+{
+    "automappingRulesFile": "",
+    "commands": [
+    ],
+    "extensionsPath": "extensions",
+    "folders": [
+        "."
+    ],
+    "properties": [
+    ],
+    "propertyTypes": [
+        {
+            "color": "#ff04bce1",
+            "drawFill": true,
+            "id": 2,
+            "members": [
+                {
+                    "name": "texture_id",
+                    "type": "string",
+                    "value": ""
+                }
+            ],
+            "name": "Collider",
+            "type": "class",
+            "useAs": [
+                "object",
+                "project"
+            ]
+        },
+        {
+            "color": "#ffcabf24",
+            "drawFill": true,
+            "id": 4,
+            "members": [
+                {
+                    "name": "texture_id",
+                    "type": "string",
+                    "value": "???"
+                }
+            ],
+            "name": "Graphics",
+            "type": "class",
+            "useAs": [
+                "property",
+                "object"
+            ]
+        },
+        {
+            "color": "#ffff4000",
+            "drawFill": true,
+            "id": 3,
+            "members": [
+            ],
+            "name": "LevelStart",
+            "type": "class",
+            "useAs": [
+                "object"
+            ]
+        }
+    ]
+}
