@@ -51,6 +51,17 @@ struct GameState {
     debug_strings: Vec<String>,
 }
 
+impl std::fmt::Debug for GameState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GameState")
+            .field("penguin", &self.penguin)
+            .field("rockets", &self.rockets)
+            .field("explosions", &self.explosions)
+            .field("debug_strings", &self.debug_strings)
+            .finish_non_exhaustive()
+    }
+}
+
 impl GameState {
     fn new() -> GameState {
         let level = build_level();
@@ -90,9 +101,15 @@ pub async fn run_game(device: &mut impl crate::input::InputDevice) {
     // Handling the quit event manually allows us to save the demo recording
     prevent_quit();
     while !is_quit_requested() {
-        if is_key_pressed(KeyCode::R) {
+        if is_key_down(KeyCode::R) {
             speed_up = !speed_up;
         }
+
+        #[expect(clippy::manual_assert)]
+        if is_key_down(miniquad::KeyCode::P) {
+            panic!("You pressed P, the Panic button. Game state: {state:#?}");
+        }
+
         // Update debt logic
         let now = get_time();
         time_bank += now - last_time;

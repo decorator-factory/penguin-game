@@ -1,10 +1,41 @@
 /*
-(MIT License) see https://github.com/not-fl3/miniquad/blob/v0.4.8/js/gl.js
+ https://github.com/not-fl3/miniquad/blob/v0.4.8/js/gl.js
+MIT/X Consortium License
+
+@ 2019-2020 Fedor Logachev <not.fl3@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the "Software"),
+to deal in the Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+---
+
 This file was edited to `export` several items and generally make it more flexible and isolated.
 It now exports these functions:
 - set_canvas(canvas: HTMLCanvasElement)
 - load(path: string)
 - define_ffi_function(name: string, func: Function)
+- add_panic_handler(func: Function(message: string, backtrace: string) -> void)
+
+Also, improvements have been made to error handling.
+- we now export `set_panic_message(message: *const char)` FFI function that let Rust report
+    a panic message before its last breath.
+- when Rust does panic, all event handling is stopped, and all the handlers added using
+    `add_panic_handler` will be called.
 */
 
 "use strict";
@@ -12,18 +43,21 @@ It now exports these functions:
 const version = 2;
 
 let canvas;
-var gl;
+let event_handler_finalizers = [];
+const /* mut */ panic_handlers = [];
+let panic_message = null;
+let gl;
 
-var clipboard = null;
+let clipboard = null;
 
-var plugins = [];
-var wasm_memory;
-var animation_frame_timeout;
+const /* mut */ plugins = [];
+let wasm_memory;
+let animation_frame_timeout;
 
-var high_dpi = false;
+let high_dpi = false;
 // if true, requestAnimationFrame will only be called from "schedule_update"
 // if false, requestAnimationFrame will be called at the end of each frame
-var blocking_event_loop = false;
+let blocking_event_loop = false;
 
 function init_webgl(version) {
     if (version == 1) {
@@ -185,12 +219,12 @@ function stringToUTF8(str, heap, outIdx, maxBytesToWrite) {
     }
     return outIdx - startIdx;
 }
-var FS = {
+const /* mut */ FS = {
     loaded_files: [],
     unique_id: 0
 };
 
-var GL = {
+const /* mut */ GL = {
     counter: 1,
     buffers: [],
     mappedBuffers: {},
@@ -406,8 +440,8 @@ function _webglGet(name_, p, type) {
     }
 }
 
-var Module;
-var wasm_exports;
+let Module;
+let wasm_exports;
 
 function resize(canvas, on_resize) {
     var dpr = dpi_scale();
@@ -424,7 +458,19 @@ function resize(canvas, on_resize) {
 }
 
 function animation() {
-    wasm_exports.frame();
+    try {
+        wasm_exports.frame();
+    } catch (e) {
+        let finalizers = event_handler_finalizers;
+        event_handler_finalizers = [];
+        for (const finalizer of finalizers) {
+            finalizer();
+        }
+        for (const handler of panic_handlers) {
+            handler(panic_message || "<panic message not set>", e.stack || "<no backtrace>");
+        }
+        throw e;
+    }
     if (!window.blocking_event_loop) {
         if (animation_frame_timeout) {
             window.cancelAnimationFrame(animation_frame_timeout);
@@ -606,9 +652,9 @@ function mouse_relative_position(clientX, clientY) {
     return { x, y };
 }
 
-var emscripten_shaders_hack = false;
+let emscripten_shaders_hack = false;
 
-var importObject = {
+const importObject = {
     env: {
         console_debug: function (ptr) {
             console.debug(UTF8ToString(ptr));
@@ -624,6 +670,11 @@ var importObject = {
         },
         console_error: function (ptr) {
             console.error(UTF8ToString(ptr));
+        },
+        set_panic_message: function (ptr) {
+            const message = UTF8ToString(ptr);
+            console.error("panic message set:", message);
+            panic_message = message;
         },
         set_emscripten_shader_hack: function (flag) {
             emscripten_shaders_hack = flag;
@@ -1165,206 +1216,217 @@ var importObject = {
             resize(canvas);
         },
         run_animation_loop: function (blocking) {
-            canvas.onmousemove = function (event) {
-                var relative_position = mouse_relative_position(event.clientX, event.clientY);
-                var x = relative_position.x;
-                var y = relative_position.y;
-
-                // TODO: do not send mouse_move when cursor is captured
-                wasm_exports.mouse_move(Math.floor(x), Math.floor(y));
-
-                // TODO: check that mouse is captured?
-                if (event.movementX != 0 || event.movementY != 0) {
-                    wasm_exports.raw_mouse_move(Math.floor(event.movementX), Math.floor(event.movementY));
+            const checkFocus = (() => {
+                let lastFocus = document.hasFocus();
+                return () => {
+                    let hasFocus = document.hasFocus();
+                    if (lastFocus == hasFocus) {
+                        wasm_exports.focus(hasFocus);
+                        lastFocus = hasFocus;
+                    }
                 }
-            };
-            canvas.onmousedown = function (event) {
-                var relative_position = mouse_relative_position(event.clientX, event.clientY);
-                var x = relative_position.x;
-                var y = relative_position.y;
+            })();
 
-                var btn = into_sapp_mousebutton(event.button);
-                wasm_exports.mouse_down(x, y, btn);
-            };
-            // SO WEB SO CONSISTENT
-            canvas.addEventListener('wheel',
-                function (event) {
+            const listeners = [
+                [canvas, "mousemove", function (event) {
+                    var relative_position = mouse_relative_position(event.clientX, event.clientY);
+                    var x = relative_position.x;
+                    var y = relative_position.y;
+                    // TODO: do not send mouse_move when cursor is captured
+                    wasm_exports.mouse_move(Math.floor(x), Math.floor(y));
+
+                    // TODO: check that mouse is captured?
+                    if (event.movementX != 0 || event.movementY != 0) {
+                        wasm_exports.raw_mouse_move(Math.floor(event.movementX), Math.floor(event.movementY));
+                    }
+                }],
+                [canvas, "mousedown", function (event) {
+                    var relative_position = mouse_relative_position(event.clientX, event.clientY);
+                    var x = relative_position.x;
+                    var y = relative_position.y;
+
+                    var btn = into_sapp_mousebutton(event.button);
+                    wasm_exports.mouse_down(x, y, btn);
+                }],
+                [canvas, 'wheel', function (event) {
                     event.preventDefault();
                     wasm_exports.mouse_wheel(-event.deltaX, -event.deltaY);
-                });
-            canvas.onmouseup = function (event) {
-                var relative_position = mouse_relative_position(event.clientX, event.clientY);
-                var x = relative_position.x;
-                var y = relative_position.y;
+                }],
+                [canvas, "mouseup", function (event) {
+                    var relative_position = mouse_relative_position(event.clientX, event.clientY);
+                    var x = relative_position.x;
+                    var y = relative_position.y;
 
-                var btn = into_sapp_mousebutton(event.button);
-                wasm_exports.mouse_up(x, y, btn);
-            };
-            canvas.onkeydown = function (event) {
-                var sapp_key_code = into_sapp_keycode(event.code);
-                switch (sapp_key_code) {
-                    //  space, arrows - prevent scrolling of the page
-                    case 32: case 262: case 263: case 264: case 265:
-                    // F1-F10
-                    case 290: case 291: case 292: case 293: case 294: case 295: case 296: case 297: case 298: case 299:
-                    // backspace is Back on Firefox/Windows
-                    case 259:
-                    // tab - for UI
-                    case 258:
-                    // quote and slash are Quick Find on Firefox
-                    case 39: case 47:
-                        event.preventDefault();
-                        break;
-                }
+                    var btn = into_sapp_mousebutton(event.button);
+                    wasm_exports.mouse_up(x, y, btn);
+                }],
+                [canvas, "keydown", function (event) {
+                    var sapp_key_code = into_sapp_keycode(event.code);
+                    switch (sapp_key_code) {
+                        //  space, arrows - prevent scrolling of the page
+                        case 32: case 262: case 263: case 264: case 265:
+                        // F1-F10
+                        case 290: case 291: case 292: case 293: case 294: case 295: case 296: case 297: case 298: case 299:
+                        // backspace is Back on Firefox/Windows
+                        case 259:
+                        // tab - for UI
+                        case 258:
+                        // quote and slash are Quick Find on Firefox
+                        case 39: case 47:
+                            event.preventDefault();
+                            break;
+                    }
 
-                var modifiers = 0;
-                if (event.ctrlKey) {
-                    modifiers |= SAPP_MODIFIER_CTRL;
-                }
-                if (event.shiftKey) {
-                    modifiers |= SAPP_MODIFIER_SHIFT;
-                }
-                if (event.altKey) {
-                    modifiers |= SAPP_MODIFIER_ALT;
-                }
-                wasm_exports.key_down(sapp_key_code, modifiers, event.repeat);
-                // for "space", "quote", and "slash" preventDefault will prevent
-                // key_press event, so send it here instead
-                if (sapp_key_code == 32 || sapp_key_code == 39 || sapp_key_code == 47) {
-                    wasm_exports.key_press(sapp_key_code);
-                }
-            };
-            canvas.onkeyup = function (event) {
-                var sapp_key_code = into_sapp_keycode(event.code);
+                    var modifiers = 0;
+                    if (event.ctrlKey) {
+                        modifiers |= SAPP_MODIFIER_CTRL;
+                    }
+                    if (event.shiftKey) {
+                        modifiers |= SAPP_MODIFIER_SHIFT;
+                    }
+                    if (event.altKey) {
+                        modifiers |= SAPP_MODIFIER_ALT;
+                    }
+                    wasm_exports.key_down(sapp_key_code, modifiers, event.repeat);
+                    // for "space", "quote", and "slash" preventDefault will prevent
+                    // key_press event, so send it here instead
+                    if (sapp_key_code == 32 || sapp_key_code == 39 || sapp_key_code == 47) {
+                        wasm_exports.key_press(sapp_key_code);
+                    }
+                }],
+                [canvas, "keyup", function (event) {
+                    var sapp_key_code = into_sapp_keycode(event.code);
 
-                var modifiers = 0;
-                if (event.ctrlKey) {
-                    modifiers |= SAPP_MODIFIER_CTRL;
-                }
-                if (event.shiftKey) {
-                    modifiers |= SAPP_MODIFIER_SHIFT;
-                }
-                if (event.altKey) {
-                    modifiers |= SAPP_MODIFIER_ALT;
-                }
+                    var modifiers = 0;
+                    if (event.ctrlKey) {
+                        modifiers |= SAPP_MODIFIER_CTRL;
+                    }
+                    if (event.shiftKey) {
+                        modifiers |= SAPP_MODIFIER_SHIFT;
+                    }
+                    if (event.altKey) {
+                        modifiers |= SAPP_MODIFIER_ALT;
+                    }
 
-                wasm_exports.key_up(sapp_key_code, modifiers);
-            };
-            canvas.onkeypress = function (event) {
-                var sapp_key_code = into_sapp_keycode(event.code);
+                    wasm_exports.key_up(sapp_key_code, modifiers);
+                }],
+                [canvas, "keypress", function (event) {
+                    var sapp_key_code = into_sapp_keycode(event.code);
 
-                // firefox do not send onkeypress events for ctrl+keys and delete key while chrome do
-                // workaround to make this behavior consistent
-                let chrome_only = sapp_key_code == 261 || event.ctrlKey;
-                if (chrome_only == false) {
-                    wasm_exports.key_press(event.charCode);
-                }
-            };
+                    // firefox do not send onkeypress events for ctrl+keys and delete key while chrome do
+                    // workaround to make this behavior consistent
+                    let chrome_only = sapp_key_code == 261 || event.ctrlKey;
+                    if (chrome_only == false) {
+                        wasm_exports.key_press(event.charCode);
+                    }
+                }],
 
-            canvas.addEventListener("touchstart", function (event) {
-                event.preventDefault();
-
-                for (const touch of event.changedTouches) {
-                    let relative_position = mouse_relative_position(touch.clientX, touch.clientY);
-                    wasm_exports.touch(SAPP_EVENTTYPE_TOUCHES_BEGAN, touch.identifier, relative_position.x, relative_position.y);
-                }
-            });
-            canvas.addEventListener("touchend", function (event) {
-                event.preventDefault();
-
-                for (const touch of event.changedTouches) {
-                    let relative_position = mouse_relative_position(touch.clientX, touch.clientY);
-                    wasm_exports.touch(SAPP_EVENTTYPE_TOUCHES_ENDED, touch.identifier, relative_position.x, relative_position.y);
-                }
-            });
-            canvas.addEventListener("touchcancel", function (event) {
-                event.preventDefault();
-
-                for (const touch of event.changedTouches) {
-                    let relative_position = mouse_relative_position(touch.clientX, touch.clientY);
-                    wasm_exports.touch(SAPP_EVENTTYPE_TOUCHES_CANCELED, touch.identifier, relative_position.x, relative_position.y);
-                }
-            });
-            canvas.addEventListener("touchmove", function (event) {
-                event.preventDefault();
-
-                for (const touch of event.changedTouches) {
-                    let relative_position = mouse_relative_position(touch.clientX, touch.clientY);
-                    wasm_exports.touch(SAPP_EVENTTYPE_TOUCHES_MOVED, touch.identifier, relative_position.x, relative_position.y);
-                }
-            });
-
-            window.onresize = function () {
-                resize(canvas, wasm_exports.resize);
-            };
-            window.addEventListener("copy", function (e) {
-                if (clipboard != null) {
-                    event.clipboardData.setData('text/plain', clipboard);
+                [canvas, "touchstart", function (event) {
                     event.preventDefault();
-                }
-            });
-            window.addEventListener("cut", function (e) {
-                if (clipboard != null) {
-                    event.clipboardData.setData('text/plain', clipboard);
+
+                    for (const touch of event.changedTouches) {
+                        let relative_position = mouse_relative_position(touch.clientX, touch.clientY);
+                        wasm_exports.touch(SAPP_EVENTTYPE_TOUCHES_BEGAN, touch.identifier, relative_position.x, relative_position.y);
+                    }
+                }],
+                [canvas, "touchend", function (event) {
                     event.preventDefault();
-                }
-            });
 
-            window.addEventListener("paste", function (e) {
-                e.stopPropagation();
-                e.preventDefault();
-                var clipboardData = e.clipboardData || window.clipboardData;
-                var pastedData = clipboardData.getData('Text');
+                    for (const touch of event.changedTouches) {
+                        let relative_position = mouse_relative_position(touch.clientX, touch.clientY);
+                        wasm_exports.touch(SAPP_EVENTTYPE_TOUCHES_ENDED, touch.identifier, relative_position.x, relative_position.y);
+                    }
+                }],
+                [canvas, "touchcancel", function (event) {
+                    event.preventDefault();
 
-                if (pastedData != undefined && pastedData != null && pastedData.length != 0) {
-                    var len = (new TextEncoder().encode(pastedData)).length;
-                    var msg = wasm_exports.allocate_vec_u8(len);
-                    var heap = new Uint8Array(wasm_memory.buffer, msg, len);
-                    stringToUTF8(pastedData, heap, 0, len);
-                    wasm_exports.on_clipboard_paste(msg, len);
-                }
-            });
+                    for (const touch of event.changedTouches) {
+                        let relative_position = mouse_relative_position(touch.clientX, touch.clientY);
+                        wasm_exports.touch(SAPP_EVENTTYPE_TOUCHES_CANCELED, touch.identifier, relative_position.x, relative_position.y);
+                    }
+                }],
+                [canvas, "touchmove", function (event) {
+                    event.preventDefault();
 
-            window.ondragover = function (e) {
-                e.preventDefault();
-            };
+                    for (const touch of event.changedTouches) {
+                        let relative_position = mouse_relative_position(touch.clientX, touch.clientY);
+                        wasm_exports.touch(SAPP_EVENTTYPE_TOUCHES_MOVED, touch.identifier, relative_position.x, relative_position.y);
+                    }
+                }],
 
-            window.ondrop = async function (e) {
-                e.preventDefault();
+                [window, "resize", function () {
+                    resize(canvas, wasm_exports.resize);
+                }],
+                [window, "copy", function (e) {
+                    if (clipboard != null) {
+                        e.clipboardData.setData('text/plain', clipboard);
+                        e.preventDefault();
+                    }
+                }],
+                [window, "cut", function (e) {
+                    if (clipboard != null) {
+                        e.clipboardData.setData('text/plain', clipboard);
+                        e.preventDefault();
+                    }
+                }],
 
-                wasm_exports.on_files_dropped_start();
+                [window, "paste", function (e) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    var clipboardData = e.clipboardData || window.clipboardData;
+                    var pastedData = clipboardData.getData('Text');
 
-                for (let file of e.dataTransfer.files) {
-                    const nameLen = file.name.length;
-                    const nameVec = wasm_exports.allocate_vec_u8(nameLen);
-                    const nameHeap = new Uint8Array(wasm_memory.buffer, nameVec, nameLen);
-                    stringToUTF8(file.name, nameHeap, 0, nameLen);
+                    if (pastedData != undefined && pastedData != null && pastedData.length != 0) {
+                        var len = (new TextEncoder().encode(pastedData)).length;
+                        var msg = wasm_exports.allocate_vec_u8(len);
+                        var heap = new Uint8Array(wasm_memory.buffer, msg, len);
+                        stringToUTF8(pastedData, heap, 0, len);
+                        wasm_exports.on_clipboard_paste(msg, len);
+                    }
+                }],
 
-                    const fileBuf = await file.arrayBuffer();
-                    const fileLen = fileBuf.byteLength;
-                    const fileVec = wasm_exports.allocate_vec_u8(fileLen);
-                    const fileHeap = new Uint8Array(wasm_memory.buffer, fileVec, fileLen);
-                    fileHeap.set(new Uint8Array(fileBuf), 0);
+                [window, "dragover", function (e) {
+                    e.preventDefault();
+                }],
 
-                    wasm_exports.on_file_dropped(nameVec, nameLen, fileVec, fileLen);
-                }
+                [window, "drop", async function (e) {
+                    e.preventDefault();
 
-                wasm_exports.on_files_dropped_finish();
-            };
+                    wasm_exports.on_files_dropped_start();
 
-            let lastFocus = document.hasFocus();
-            var checkFocus = function () {
-                let hasFocus = document.hasFocus();
-                if (lastFocus == hasFocus) {
-                    wasm_exports.focus(hasFocus);
-                    lastFocus = hasFocus;
-                }
+                    for (let file of e.dataTransfer.files) {
+                        const nameLen = file.name.length;
+                        const nameVec = wasm_exports.allocate_vec_u8(nameLen);
+                        const nameHeap = new Uint8Array(wasm_memory.buffer, nameVec, nameLen);
+                        stringToUTF8(file.name, nameHeap, 0, nameLen);
+
+                        const fileBuf = await file.arrayBuffer();
+                        const fileLen = fileBuf.byteLength;
+                        const fileVec = wasm_exports.allocate_vec_u8(fileLen);
+                        const fileHeap = new Uint8Array(wasm_memory.buffer, fileVec, fileLen);
+                        fileHeap.set(new Uint8Array(fileBuf), 0);
+
+                        wasm_exports.on_file_dropped(nameVec, nameLen, fileVec, fileLen);
+                    }
+
+                    wasm_exports.on_files_dropped_finish();
+                }],
+                [document, "visibilitychange", checkFocus],
+                [window, "focus", checkFocus],
+                [window, "blur", checkFocus],
+            ]
+
+            for (const [target, event, handler] of listeners) {
+                target.addEventListener(event, handler);
             }
-            document.addEventListener("visibilitychange", checkFocus);
-            window.addEventListener("focus", checkFocus);
-            window.addEventListener("blur", checkFocus);
 
-            window.blocking_event_loop = blocking;
+            event_handler_finalizers.push(() => {
+                for (const [target, event, listener] of listeners) {
+                    target.removeEventListener(event, listener)
+                }
+            })
+
+            blocking_event_loop = blocking;
             window.requestAnimationFrame(animation);
         },
 
@@ -1498,7 +1560,7 @@ function miniquad_add_plugin(plugin) {
 // read module imports and create fake functions in import object
 // this is will allow to successfeully link wasm even with wrong version of gl.js
 // needed to workaround firefox bug with lost error on wasm linking errors
-function add_missing_functions_stabs(obj) {
+function add_missing_functions_stubs(obj) {
     var imports = WebAssembly.Module.imports(obj);
 
     for (const i in imports) {
@@ -1519,7 +1581,7 @@ export function load(wasm_path) {
     if (typeof WebAssembly.compileStreaming === 'function') {
         WebAssembly.compileStreaming(req)
             .then(obj => {
-                add_missing_functions_stabs(obj);
+                add_missing_functions_stubs(obj);
                 return WebAssembly.instantiate(obj, importObject);
             })
             .then(
@@ -1544,7 +1606,7 @@ export function load(wasm_path) {
             .then(function (x) { return x.arrayBuffer(); })
             .then(function (bytes) { return WebAssembly.compile(bytes); })
             .then(function (obj) {
-                add_missing_functions_stabs(obj);
+                add_missing_functions_stubs(obj);
                 return WebAssembly.instantiate(obj, importObject);
             })
             .then(function (obj) {
@@ -1588,8 +1650,15 @@ export function set_canvas(newCanvas) {
 }
 
 export function define_ffi_function(name, func) {
-  if (importObject.env[name] !== undefined) {
-    throw new Error(`FFI function ${name} is already defined`)
-  }
-  importObject.env[name] = func
+    if (importObject.env[name] !== undefined) {
+        throw new Error(`FFI function ${name} is already defined`)
+    }
+    importObject.env[name] = func
+}
+
+export function add_panic_handler(func) {
+    if (typeof func !== "function") {
+        throw new Error(`${func} is not a function`);
+    }
+    panic_handlers.push(func);
 }

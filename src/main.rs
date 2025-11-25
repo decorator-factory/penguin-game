@@ -91,6 +91,8 @@ fn try_create_exclusive_file(output_path: &std::path::Path) -> Result<File, Stri
 }
 
 async fn amain(args: RunArgs) {
+    fix_panic_handling();
+
     match args {
         RunArgs::JustPlay => {
             game::run_game(&mut input::MacroquadInput).await;
@@ -145,6 +147,31 @@ async fn amain(args: RunArgs) {
             println!("Wrote {} successfully!", output_path.display());
         }
     }
+}
+
+/// Improve panic handling on webassembly.
+///
+/// See <https://github.com/not-fl3/macroquad/issues/953> for some context.
+///
+/// Additionally, macroquad's default panic hook just shows `Any {..}`
+/// for the payload which makes debugging difficult.
+fn fix_panic_handling() {
+    #[cfg(target_family = "wasm")]
+    std::panic::set_hook(Box::new(|panic_info| {
+        let panic_message = panic_info.payload_as_str().unwrap_or("<unknown payload>");
+        let location =
+            panic_info.location().map_or("<unknown location>".to_string(), ToString::to_string);
+
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        let string = format!(
+            "penguin-game panicked at {location} with message: {panic_message} and backtrace: {backtrace:?}\x00"
+        );
+
+        // SAFETY: string points to an explicitly 0-terminated string
+        unsafe {
+            wasm::set_panic_message(string.as_ptr().cast());
+        };
+    }));
 }
 
 mod cli {
