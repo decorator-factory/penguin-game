@@ -2,6 +2,14 @@ use std::collections::HashMap;
 
 use glam::Vec2;
 use macroquad::math::Rect;
+use nalgebra::Point2;
+use parry2d::{
+    bounding_volume::Aabb,
+    partitioning::{
+        Bvh,
+        BvhBuildStrategy,
+    },
+};
 
 use crate::draw_utils::{
     DrawOpts,
@@ -10,10 +18,12 @@ use crate::draw_utils::{
 };
 
 pub struct Level {
-    graphics: Vec<Graphic>,
     rect_colliders: Vec<Rect>,
     poly_colliders: Vec<parry2d::shape::ConvexPolygon>,
     start_pos: Vec2,
+    graphics_background_threshold: u32, // HACK
+    graphics: Vec<Graphic>,
+    graphics_bvh: parry2d::partitioning::Bvh,
 }
 
 pub enum Graphic {
@@ -22,7 +32,7 @@ pub enum Graphic {
 }
 
 impl Graphic {
-    pub fn macroquad_draw(&self) {
+    fn macroquad_draw(&self) {
         match self {
             Graphic::Rect { pos, wh, draw } => {
                 draw_textured_rect(*pos, *wh, draw.clone());
@@ -35,8 +45,23 @@ impl Graphic {
 }
 
 impl Level {
-    pub fn graphics(&self) -> &[Graphic] {
-        &self.graphics
+    pub fn macroquad_draw(&self, rect: Rect) {
+        let aabb =
+            Aabb::new(Point2::new(rect.x, rect.y), Point2::new(rect.x + rect.w, rect.y + rect.h));
+
+        let indices: Vec<u32> = self.graphics_bvh.intersect_aabb(&aabb).collect();
+
+        // TODO: implement proper layers
+        for &index in &indices {
+            if index < self.graphics_background_threshold {
+                self.graphics[index as usize].macroquad_draw();
+            }
+        }
+        for index in indices {
+            if index >= self.graphics_background_threshold {
+                self.graphics[index as usize].macroquad_draw();
+            }
+        }
     }
 
     pub fn rect_colliders(&self) -> &[Rect] {
@@ -112,18 +137,26 @@ impl LevelBuilder {
         );
         let mut rect_colliders = Vec::with_capacity(self.rects.len());
         let mut poly_colliders = Vec::with_capacity(self.polygons.len());
+        let mut graphics_aabbs: Vec<Aabb> = Vec::with_capacity(graphics.capacity());
+
+        let rect_aabb = |pos: Vec2, wh: Vec2| {
+            Aabb::new(Point2::new(pos.x, pos.y), Point2::new(pos.x + wh.x, pos.y + wh.y))
+        };
 
         for (pos, wh, draw) in &self.rects_graphics {
             graphics.push(Graphic::Rect { pos: *pos, wh: *wh, draw: draw.clone() });
+            graphics_aabbs.push(rect_aabb(*pos, *wh));
         }
 
         for (points, draw) in &self.polygons_graphics {
             graphics.push(Graphic::Polygon { points: points.clone(), draw: draw.clone() });
+            graphics_aabbs.push(Aabb::from_points(points.iter().map(|p| Point2::new(p.x, p.y))));
         }
 
         for (pos, wh, draw) in &self.rects {
             graphics.push(Graphic::Rect { pos: *pos, wh: *wh, draw: draw.clone() });
             rect_colliders.push(Rect { x: pos.x, y: pos.y, w: wh.x, h: wh.y });
+            graphics_aabbs.push(rect_aabb(*pos, *wh));
         }
 
         for (points, draw) in &self.polygons {
@@ -135,8 +168,21 @@ impl LevelBuilder {
                 parry2d::shape::ConvexPolygon::from_convex_hull(&parry2d_points)
                     .expect("invalid polygon"),
             );
+            graphics_aabbs.push(Aabb::from_points(points.iter().map(|p| Point2::new(p.x, p.y))));
             graphics.push(Graphic::Polygon { points, draw: draw.clone() });
         }
-        Level { graphics, rect_colliders, poly_colliders, start_pos }
+
+        let graphics_bvh = Bvh::from_leaves(BvhBuildStrategy::Ploc, &graphics_aabbs);
+
+        #[expect(clippy::cast_possible_truncation)]
+        Level {
+            rect_colliders,
+            poly_colliders,
+            start_pos,
+            graphics,
+            graphics_bvh,
+            graphics_background_threshold: (self.rects_graphics.len()
+                + self.polygons_graphics.len()) as u32,
+        }
     }
 }

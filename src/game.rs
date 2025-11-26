@@ -146,26 +146,24 @@ pub async fn run_game(device: &mut impl crate::input::InputDevice, new_level: bo
             }
         });
 
-        stats.measure_graphics(|| {
-            graphics::draw_state(&state, device.look_angle_radians());
-        });
-
-        // Draw debug information. Not included into graphics measurement, takes very little time
         let fps = get_fps();
-        draw_text(&format!("FPS: {fps:03}, target UPS: {ups:04}"), 32., 32., 16., WHITE);
-        let debug_line = &format!(
-            "upd: {}, frame: {}, input: {}, perf: {}",
-            frame_number,
+        let stats_line = &format!(
+            "up:{} fr:{} dev:{} perf:{}",
             update_number,
+            frame_number,
             device.device_info(),
             stats
         );
-        draw_text(debug_line, 32., 48., 16., WHITE);
-        let mut y = 64.0;
-        for string in &state.debug_strings {
-            draw_text(string, 32.0, y, 16.0, WHITE);
-            y += 16.0;
-        }
+        stats.measure_graphics(|| {
+            graphics::draw_state(&state, device.look_angle_radians());
+            draw_text(&format!("FPS: {fps:03}, target UPS: {ups:04}"), 32., 32., 16., WHITE);
+            draw_text(stats_line, 32., 48., 16., WHITE);
+            let mut y = 64.0;
+            for string in &state.debug_strings {
+                draw_text(string, 32.0, y, 16.0, WHITE);
+                y += 16.0;
+            }
+        });
         next_frame().await;
         frame_number += 1;
         #[expect(clippy::cast_sign_loss)]
@@ -562,9 +560,9 @@ mod graphics {
         let viewport_offset = state.penguin.pos - screen_size / 2.;
         set_camera(&viewport_offset_to_camera(viewport_offset, screen_size));
         clear_background(DARKBLUE);
-        for graphic in state.level.graphics() {
-            graphic.macroquad_draw();
-        }
+
+        let rect = Rect::new(viewport_offset.x, viewport_offset.y, screen_size.x, screen_size.y);
+        state.level.macroquad_draw(rect);
         draw_penguin(
             state.penguin.pos,
             state.penguin.vel,
