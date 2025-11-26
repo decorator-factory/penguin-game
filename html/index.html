@@ -61,8 +61,9 @@
             const errorElement = document.getElementById("error");
             const backtraceElement = document.getElementById("backtrace");
 
-            import("./miniquad.js").then((miniquad) => {
+            import("./miniquad.js").then(async (miniquad) => {
                 console.log("minquad.js loaded!");
+
                 miniquad.set_canvas(document.getElementById("penguin-game-canvas"));
                 miniquad.define_ffi_function("is_wasm_demo", function () {
                     return document.location.hash == "#demo";
@@ -74,7 +75,9 @@
                     backtraceElement.innerText = message + "\n--------\n" + backtrace;
                     errorElement.classList.add("show");
                 })
-                miniquad.load("penguin-game.wasm");
+                await miniquad.load("penguin-game.wasm");
+
+                console.info(miniquad.wasm_exports)
             });
         </script>
     </body>

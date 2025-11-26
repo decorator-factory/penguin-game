@@ -27,9 +27,12 @@ DEALINGS IN THE SOFTWARE.
 This file was edited to `export` several items and generally make it more flexible and isolated.
 It now exports these functions:
 - set_canvas(canvas: HTMLCanvasElement)
-- load(path: string)
+- async load(path: string)
 - define_ffi_function(name: string, func: Function)
 - add_panic_handler(func: Function(message: string, backtrace: string) -> void)
+
+And these attributes:
+- wasm_exporte
 
 Also, improvements have been made to error handling.
 - we now export `set_panic_message(message: *const char)` FFI function that let Rust report
@@ -441,7 +444,7 @@ function _webglGet(name_, p, type) {
 }
 
 let Module;
-let wasm_exports;
+export let wasm_exports;
 
 function resize(canvas, on_resize) {
     var dpr = dpi_scale();
@@ -1560,8 +1563,8 @@ function miniquad_add_plugin(plugin) {
 // read module imports and create fake functions in import object
 // this is will allow to successfeully link wasm even with wrong version of gl.js
 // needed to workaround firefox bug with lost error on wasm linking errors
-function add_missing_functions_stubs(obj) {
-    var imports = WebAssembly.Module.imports(obj);
+function add_missing_functions_stubs(module) {
+    var imports = WebAssembly.Module.imports(module);
 
     for (const i in imports) {
         if (importObject["env"][imports[i].name] == undefined) {
@@ -1573,60 +1576,32 @@ function add_missing_functions_stubs(obj) {
     }
 }
 
-export function load(wasm_path) {
-    var req = fetch(wasm_path);
+export async function load(wasm_path) {
+    const req = fetch(wasm_path);
 
     register_plugins(plugins);
 
+    let module;
     if (typeof WebAssembly.compileStreaming === 'function') {
-        WebAssembly.compileStreaming(req)
-            .then(obj => {
-                add_missing_functions_stubs(obj);
-                return WebAssembly.instantiate(obj, importObject);
-            })
-            .then(
-                obj => {
-                    wasm_memory = obj.exports.memory;
-                    wasm_exports = obj.exports;
-
-                    var crate_version = wasm_exports.crate_version();
-                    if (version != crate_version) {
-                        console.error(
-                            "Version mismatch: gl.js version is: " + version +
-                            ", miniquad crate version is: " + crate_version);
-                    }
-                    init_plugins(plugins);
-                    obj.exports.main();
-                })
-            .catch(err => {
-                console.error(err);
-            })
+        module = await WebAssembly.compileStreaming(req);
     } else {
-        req
-            .then(function (x) { return x.arrayBuffer(); })
-            .then(function (bytes) { return WebAssembly.compile(bytes); })
-            .then(function (obj) {
-                add_missing_functions_stubs(obj);
-                return WebAssembly.instantiate(obj, importObject);
-            })
-            .then(function (obj) {
-                wasm_memory = obj.exports.memory;
-                wasm_exports = obj.exports;
-
-                var crate_version = wasm_exports.crate_version();
-                if (version != crate_version) {
-                    console.error(
-                        "Version mismatch: gl.js version is: " + version +
-                        ", rust sapp-wasm crate version is: " + crate_version);
-                }
-                init_plugins(plugins);
-                obj.exports.main();
-            })
-            .catch(err => {
-                console.error("WASM failed to load, probably incompatible gl.js version");
-                console.error(err);
-            });
+        const bytes = (await req).arrayBuffer();
+        module = await WebAssembly.compile(bytes);
     }
+
+    add_missing_functions_stubs(module);
+    const instance = await WebAssembly.instantiate(module, importObject);
+    wasm_memory = instance.exports.memory;
+    wasm_exports = instance.exports;
+
+    var crate_version = wasm_exports.crate_version();
+    if (version != crate_version) {
+        console.error(
+            "Version mismatch: gl.js version is: " + version +
+            ", miniquad crate version is: " + crate_version);
+    }
+    init_plugins(plugins);
+    instance.exports.main();
 }
 
 export function set_canvas(newCanvas) {
