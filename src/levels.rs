@@ -1,13 +1,27 @@
 use std::collections::HashMap;
 
-use glam::Vec2;
-use macroquad::math::Rect;
-use nalgebra::Point2;
+use glam::{
+    Vec2,
+    vec2,
+};
+use macroquad::math::{
+    Circle,
+    Rect,
+};
+use nalgebra::{
+    Isometry2,
+    Point2,
+};
 use parry2d::{
     bounding_volume::Aabb,
     partitioning::{
         Bvh,
         BvhBuildStrategy,
+    },
+    query::details::intersection_test_ball_point_query,
+    shape::{
+        Ball,
+        ConvexPolygon,
     },
 };
 
@@ -19,11 +33,15 @@ use crate::draw_utils::{
 
 pub struct Level {
     rect_colliders: Vec<Rect>,
-    poly_colliders: Vec<parry2d::shape::ConvexPolygon>,
+    poly_colliders: Vec<ConvexPolygon>,
     start_pos: Vec2,
+
+    triggers_bvh: Bvh,
+    triggers: Vec<(TriggerKind, ConvexPolygon)>,
+
     graphics_background_threshold: u32, // HACK
     graphics: Vec<Graphic>,
-    graphics_bvh: parry2d::partitioning::Bvh,
+    graphics_bvh: Bvh,
 }
 
 pub enum Graphic {
@@ -44,11 +62,15 @@ impl Graphic {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum TriggerKind {
+    Panic,
+    Hello,
+}
+
 impl Level {
     pub fn macroquad_draw(&self, rect: Rect) {
-        let aabb =
-            Aabb::new(Point2::new(rect.x, rect.y), Point2::new(rect.x + rect.w, rect.y + rect.h));
-
+        let aabb = rect_aabb(rect);
         let indices: Vec<u32> = self.graphics_bvh.intersect_aabb(&aabb).collect();
 
         // TODO: implement proper layers
@@ -64,11 +86,28 @@ impl Level {
         }
     }
 
+    pub fn triggers_at(&self, circle: Circle) -> Vec<(TriggerKind, &ConvexPolygon)> {
+        let mut rv = Vec::new();
+        let start = circle.point() - vec2(circle.r, circle.r);
+        let end = circle.point() + vec2(circle.r, circle.r);
+        let aabb = Aabb::new(vec_to_parry(start), vec_to_parry(end));
+
+        let ball = Ball::new(circle.radius());
+        let ball_pos_inv = Isometry2::translation(-circle.x, -circle.y);
+        for index in self.triggers_bvh.intersect_aabb(&aabb) {
+            let (kind, poly) = &self.triggers[index as usize];
+            if intersection_test_ball_point_query(&ball_pos_inv, &ball, poly) {
+                rv.push((*kind, poly));
+            }
+        }
+        rv
+    }
+
     pub fn rect_colliders(&self) -> &[Rect] {
         &self.rect_colliders
     }
 
-    pub fn poly_colliders(&self) -> &[parry2d::shape::ConvexPolygon] {
+    pub fn poly_colliders(&self) -> &[ConvexPolygon] {
         &self.poly_colliders
     }
 
@@ -83,6 +122,7 @@ pub struct LevelBuilder {
     polygons: Vec<(Vec<Vec2>, DrawOpts)>,
     rects_graphics: Vec<(Vec2, Vec2, DrawOpts)>,
     polygons_graphics: Vec<(Vec<Vec2>, DrawOpts)>,
+    triggers: Vec<(TriggerKind, ConvexPolygon)>,
     level_start: Vec2,
 }
 
@@ -95,6 +135,7 @@ impl LevelBuilder {
             rects_graphics: Vec::with_capacity(32),
             polygons_graphics: Vec::with_capacity(32),
             level_start: Vec2::ZERO,
+            triggers: Vec::new(),
         }
     }
 
@@ -113,6 +154,16 @@ impl LevelBuilder {
     pub fn rect(&mut self, texture: Option<&'static str>, xy: Vec2, wh: Vec2) {
         // TODO: skip drawing stuff when texture is None
         self.rects.push((xy, wh, self.texture_to_draw_opts(texture)));
+    }
+
+    pub fn rect_trigger(&mut self, action: TriggerKind, xy: Vec2, wh: Vec2) {
+        debug_assert!(wh.is_finite() && wh.x >= 0.0 && wh.y >= 0.0, "Invalid 'wh': {wh}");
+        let points = Vec::from_iter(
+            [xy + wh, xy + wh.with_y(0.0), xy, xy + wh.with_x(0.0)].map(vec_to_parry),
+        );
+        let poly = ConvexPolygon::from_convex_polyline_unmodified(points)
+            .unwrap_or_else(|| panic!("Invalid rect provided for polygon: xy={xy:?}, wh={wh:?}"));
+        self.triggers.push((action, poly));
     }
 
     pub fn polygon_graphics(&mut self, texture: &'static str, points: &[Vec2]) {
@@ -139,9 +190,7 @@ impl LevelBuilder {
         let mut poly_colliders = Vec::with_capacity(self.polygons.len());
         let mut graphics_aabbs: Vec<Aabb> = Vec::with_capacity(graphics.capacity());
 
-        let rect_aabb = |pos: Vec2, wh: Vec2| {
-            Aabb::new(Point2::new(pos.x, pos.y), Point2::new(pos.x + wh.x, pos.y + wh.y))
-        };
+        let rect_aabb = |pos: Vec2, wh: Vec2| Aabb::new(vec_to_parry(pos), vec_to_parry(pos + wh));
 
         for (pos, wh, draw) in &self.rects_graphics {
             graphics.push(Graphic::Rect { pos: *pos, wh: *wh, draw: draw.clone() });
@@ -150,7 +199,7 @@ impl LevelBuilder {
 
         for (points, draw) in &self.polygons_graphics {
             graphics.push(Graphic::Polygon { points: points.clone(), draw: draw.clone() });
-            graphics_aabbs.push(Aabb::from_points(points.iter().map(|p| Point2::new(p.x, p.y))));
+            graphics_aabbs.push(Aabb::from_points(points.iter().copied().map(vec_to_parry)));
         }
 
         for (pos, wh, draw) in &self.rects {
@@ -161,18 +210,19 @@ impl LevelBuilder {
 
         for (points, draw) in &self.polygons {
             let points = points.clone();
-            let parry2d_points: Vec<_> =
-                points.iter().map(|p| nalgebra::Point2::new(p.x, p.y)).collect();
+            let parry2d_points: Vec<_> = points.iter().copied().map(vec_to_parry).collect();
 
-            poly_colliders.push(
-                parry2d::shape::ConvexPolygon::from_convex_hull(&parry2d_points)
-                    .expect("invalid polygon"),
-            );
-            graphics_aabbs.push(Aabb::from_points(points.iter().map(|p| Point2::new(p.x, p.y))));
+            poly_colliders
+                .push(ConvexPolygon::from_convex_hull(&parry2d_points).expect("invalid polygon"));
+            graphics_aabbs.push(Aabb::from_points(points.iter().copied().map(vec_to_parry)));
             graphics.push(Graphic::Polygon { points, draw: draw.clone() });
         }
-
         let graphics_bvh = Bvh::from_leaves(BvhBuildStrategy::Ploc, &graphics_aabbs);
+
+        let triggers_bvh = {
+            let aabbs = self.triggers.iter().map(|(_, poly)| poly.aabb(&Isometry2::default()));
+            Bvh::from_iter(BvhBuildStrategy::Ploc, aabbs.enumerate())
+        };
 
         #[expect(clippy::cast_possible_truncation)]
         Level {
@@ -183,6 +233,24 @@ impl LevelBuilder {
             graphics_bvh,
             graphics_background_threshold: (self.rects_graphics.len()
                 + self.polygons_graphics.len()) as u32,
+
+            triggers_bvh,
+            triggers: self.triggers,
         }
     }
+
+    pub fn polygon_trigger(&mut self, action: TriggerKind, points: &[Vec2]) {
+        let parry2d_points: Vec<_> = points.iter().copied().map(vec_to_parry).collect();
+        let poly = ConvexPolygon::from_convex_hull(&parry2d_points)
+            .unwrap_or_else(|| panic!("Invalid polygon provided: {points:?}"));
+        self.triggers.push((action, poly));
+    }
+}
+
+fn vec_to_parry(v: Vec2) -> Point2<f32> {
+    Point2::new(v.x, v.y)
+}
+
+fn rect_aabb(rect: Rect) -> Aabb {
+    Aabb::new(Point2::new(rect.x, rect.y), Point2::new(rect.right(), rect.bottom()))
 }

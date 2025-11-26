@@ -41,7 +41,6 @@
             "name": "Graphics",
             "type": "class",
             "useAs": [
-                "property",
                 "object"
             ]
         },
@@ -55,6 +54,31 @@
             "type": "class",
             "useAs": [
                 "object"
+            ]
+        },
+        {
+            "color": "#ffe5041b",
+            "drawFill": true,
+            "id": 5,
+            "members": [
+                {
+                    "name": "action",
+                    "type": "string",
+                    "value": ""
+                }
+            ],
+            "name": "Trigger",
+            "type": "class",
+            "useAs": [
+                "property",
+                "map",
+                "layer",
+                "object",
+                "tile",
+                "tileset",
+                "wangcolor",
+                "wangset",
+                "project"
             ]
         }
     ]

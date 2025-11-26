@@ -1,5 +1,7 @@
 """
 Requires Python 3.12 or later. No other dependencies.
+
+NB: in Python's "type annotation" system, `float` means `int | float`. Annoying.
 """
 
 import json
@@ -30,12 +32,28 @@ TEMPLATE = """
 use crate::levels;
 use glam::vec2;
 
+#[rustfmt::skip]
 pub fn build(mut builder: levels::LevelBuilder) -> levels::Level {
 %(lines)s
     builder.level_start(%(level_start)s);
     builder.build_or_die()
 }
 """.strip()
+
+
+def trigger_action_expr(obj: dict[str, Any]) -> str:
+    for prop in obj.get("properties", []):
+        if prop["name"] == "action":
+            match prop.get("value"):
+                case "Panic":
+                    return "levels::TriggerKind::Panic"
+                case "Hello":
+                    return "levels::TriggerKind::Hello"
+                case _:
+                    raise Exception(
+                        f"Unknown action in trigger object with id={obj['id']}"
+                    )
+    raise Exception(f"Expected an action for trigger object with id={obj['id']}")
 
 
 def maybe_texture_expr(obj: dict[str, Any]) -> str:
@@ -47,6 +65,12 @@ def maybe_texture_expr(obj: dict[str, Any]) -> str:
                 break
             return f'Some("{value}")'
     return "None"
+
+
+def vec_expr(x: float, y: float) -> str:
+    sx = f"{x:.3f}".rstrip("0")
+    sy = f"{y:.3f}".rstrip("0")
+    return f"vec2({sx}, {sy})"
 
 
 def texture_expr(obj: dict[str, Any]) -> str:
@@ -61,15 +85,17 @@ def texture_expr(obj: dict[str, Any]) -> str:
 
 
 def polygon_to_expr(obj: list[dict[str, Any]], x: float, y: float) -> str:
-    points = [(float(x + p["x"]), float(y + p["y"])) for p in obj]
-
-    return "&[" + ", ".join([f"vec2({px}, {py})" for px, py in points]) + "]"
+    points = [vec_expr(x + p["x"], y + p["y"]) for p in obj]
+    return "&[" + ", ".join(points) + "]"
 
 
 lines: list[str] = []
 level_start: str | None = None
 
 for obj in layer["objects"]:
+    # Beware: Tiled exports are kinda cursed. For example, polygons have `x` and `y`
+    # fields (which represent an offset) as well as `width` and `height` (which to my
+    # knowledge don't represent anything and just chill out there).
     match obj:
         case {"polygon": polygon, "x": x, "y": y, "type": "Collider"}:
             texture = maybe_texture_expr(obj)
@@ -89,19 +115,31 @@ for obj in layer["objects"]:
 
         case {"x": x, "y": y, "width": w, "height": h, "type": "Collider"}:
             texture = maybe_texture_expr(obj)
-            x, y, w, h = map(float, (x, y, w, h))
-            lines.append(f"builder.rect({texture}, vec2({x}, {y}), vec2({w}, {h}));")
+            lines.append(f"builder.rect({texture}, {vec_expr(x, y)}, {vec_expr(w, h)});")
 
         case {"x": x, "y": y, "width": w, "height": h, "type": "Graphics"}:
             texture = texture_expr(obj)
-            x, y, w, h = map(float, (x, y, w, h))
-            lines.append(f"builder.rect_graphics({texture}, vec2({x}, {y}), vec2({w}, {h}));")
+            lines.append(
+                f"builder.rect_graphics({texture}, {vec_expr(x, y)}, {vec_expr(w, h)});"
+            )
+
+        case {"polygon": polygon, "x": x, "y": y, "type": "Trigger"}:
+            action = trigger_action_expr(obj)
+            points = polygon_to_expr(polygon, x, y)
+            lines.append(
+                f"builder.polygon_trigger({action}, {points});"
+            )
+
+        case {"x": x, "y": y, "width": w, "height": h, "type": "Trigger"}:
+            action = trigger_action_expr(obj)
+            lines.append(
+                f"builder.rect_trigger({action}, {vec_expr(x, y)}, {vec_expr(w, h)});"
+            )
 
         case {"x": x, "y": y, "type": "LevelStart"}:
-            x, y = map(float, (x, y))
             if level_start is not None:
                 raise Exception("Duplicate LevelStart object")
-            level_start = f"vec2({x}, {y})"
+            level_start = vec_expr(x, y)
 
         case other:
             raise Exception(f"Unknown object type with ID {obj.get('id')}")

@@ -116,11 +116,6 @@ pub async fn run_game(device: &mut impl crate::input::InputDevice, new_level: bo
             speed_up = !speed_up;
         }
 
-        #[expect(clippy::manual_assert)]
-        if is_key_down(miniquad::KeyCode::P) {
-            panic!("You pressed P, the Panic button. Game state: {state:#?}");
-        }
-
         // Update debt logic
         let now = get_time();
         time_bank += now - last_time;
@@ -301,6 +296,7 @@ mod updates {
             &mut state.explosions,
             |debug| state.debug_strings.push(debug),
         );
+        apply_penguin_triggers(state);
 
         state.penguin.rocket_cooldown = state.penguin.rocket_cooldown.saturating_sub(1);
         // Spawn rocket
@@ -476,6 +472,23 @@ mod updates {
                 initial_ttl: EXPLOSION_TTL,
                 force: EXPLOSION_FORCE,
             });
+        }
+    }
+
+    fn apply_penguin_triggers(state: &mut GameState) {
+        let penguin = state.penguin;
+        let triggers =
+            state.level.triggers_at(Circle::new(penguin.pos.x, penguin.pos.y, PENGUIN_RADIUS));
+
+        for (kind, poly) in triggers {
+            match kind {
+                crate::levels::TriggerKind::Panic => {
+                    panic!("You have entered a Panic trigger. This is not a bug. Game state: {state:#?}")
+                }
+                crate::levels::TriggerKind::Hello => {
+                    state.debug_strings.push(format!("Hello from {poly:?}"));
+                }
+            }
         }
     }
 
