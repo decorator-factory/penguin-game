@@ -1,59 +1,76 @@
 use arrayvec::ArrayVec;
 use macroquad::prelude::*;
+use miniquad::{
+    RenderingBackend,
+    TextureWrap,
+};
 
 #[derive(Debug, Clone)]
-pub struct DrawOpts(Color, Texture2D);
+pub struct DrawOpts {
+    color: Color,
+    texture: Texture2D,
+}
 
 impl From<Color> for DrawOpts {
     fn from(val: Color) -> Self {
-        DrawOpts(val, Texture2D::empty())
+        DrawOpts { color: val, texture: Texture2D::empty() }
     }
 }
 
 impl From<Texture2D> for DrawOpts {
     fn from(val: Texture2D) -> Self {
-        DrawOpts(WHITE, val)
+        DrawOpts { color: WHITE, texture: val }
     }
 }
 
 impl From<&Texture2D> for DrawOpts {
     fn from(val: &Texture2D) -> Self {
-        DrawOpts(WHITE, val.clone())
+        DrawOpts { color: WHITE, texture: val.weak_clone() }
     }
 }
 
-pub fn draw_textured_rect(pos: Vec2, wh: Vec2, opts: impl Into<DrawOpts>) {
+pub fn draw_textured_rect(pos: Vec2, wh: Vec2, opts: DrawOpts) {
     // SAFETY: internal context does not escape this function
-    let gl = unsafe { get_internal_gl() }.quad_gl;
-    let DrawOpts(color, texture) = opts.into();
+    let ctx = unsafe { get_internal_gl() };
+    let gl = ctx.quad_gl;
+    let DrawOpts { color, texture } = opts;
 
-    let points = [pos, pos + wh.with_y(0.0), pos + wh, pos + wh.with_x(0.0)];
-    let vertices = points.map(|point| {
-        // TODO: right now we draw all textures as if they started repeating at (0, 0)
-        // Should we add an option to repeat them as if they started at (x, y)?
-        let (u, v) = (point.x / texture.width(), point.y / texture.height());
-        Vertex::new(point.x, point.y, 0., u, v, color)
-    });
+    #[rustfmt::skip]
+    let vertices = if is_texture_repeating(ctx.quad_context, &texture) {
+        // this draws the texture as if it started at (0, 0)
+        let points = [pos, pos + wh.with_y(0.0), pos + wh, pos + wh.with_x(0.0)];
+        points.map(|point| {
+            let (u, v) = (point.x / texture.width(), point.y / texture.height());
+            Vertex::new(point.x, point.y, 0., u, v, color)
+        })
+    } else {
+        [
+            Vertex::new(pos.x,        pos.y,        0.0, 0.0, 0.0, color),
+            Vertex::new(pos.x + wh.x, pos.y,        0.0, 1.0, 0.0, color),
+            Vertex::new(pos.x + wh.x, pos.y + wh.y, 0.0, 1.0, 1.0, color),
+            Vertex::new(pos.x,        pos.y + wh.y, 0.0, 0.0, 1.0, color),
+        ]
+    };
 
     gl.texture(Some(&texture));
     gl.draw_mode(DrawMode::Triangles);
-    gl.geometry(&vertices, &[0, 1, 2, 0, 2, 3]);
+    gl.geometry(&vertices, &[0, 1, 3, 1, 2, 3]);
 }
 
-pub fn draw_textured_poly(points: &[Vec2], opts: impl Into<DrawOpts>) {
+pub fn draw_textured_poly(points: &[Vec2], opts: DrawOpts) {
     debug_assert!(points.len() < 1024, "polygon is suspiciously large");
 
     // SAFETY: internal context does not escape this function
-    let gl = unsafe { get_internal_gl() }.quad_gl;
+    let ctx = unsafe { get_internal_gl() };
+    let gl = ctx.quad_gl;
 
     let mut vertices = Vec::<Vertex>::with_capacity(points.len());
     let mut indices = Vec::<u16>::with_capacity(points.len() * 3);
 
-    let DrawOpts(color, texture) = opts.into();
+    let DrawOpts { color, texture } = opts;
 
     for (i, point) in points.iter().enumerate() {
-        // TODO: right now we draw all textures as if they started repeating at (0, 0)
-        // Should we add an option to repeat them as if they started at (x, y)?
+        // Texturing a polygon probably doesn't make sense with a non-repeating texture, right?
         let (u, v) = (point.x / texture.width(), point.y / texture.height());
         vertices.push(Vertex::new(point.x, point.y, 0., u, v, color));
 
@@ -96,7 +113,7 @@ pub fn draw_vclipped_circle(x: f32, y: f32, radius: f32, ratio: f32, color: Colo
     }
     points.push(points[0]);
 
-    draw_textured_poly(&points, color);
+    draw_textured_poly(&points, color.into());
 }
 
 #[allow(dead_code, reason = "this function is useful for debugging")]
@@ -108,4 +125,9 @@ pub fn draw_arrow(start: Vec2, end: Vec2, color: Color) {
     let v3 = end + delta * 12. - delta.perp() * 6.;
     draw_line(start.x, start.y, end.x, end.y, 2., color);
     draw_triangle(v1, v2, v3, color);
+}
+
+fn is_texture_repeating(backend: &dyn RenderingBackend, texture: &Texture2D) -> bool {
+    let id = texture.raw_miniquad_id();
+    matches!(backend.texture_params(id).wrap, TextureWrap::Repeat)
 }

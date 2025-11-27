@@ -1144,6 +1144,84 @@
                  "width":72,
                  "x":24,
                  "y":60
+                }, 
+                {
+                 "height":24,
+                 "id":91,
+                 "name":"",
+                 "properties":[
+                        {
+                         "name":"action",
+                         "type":"string",
+                         "value":"DebugText"
+                        }, 
+                        {
+                         "name":"text",
+                         "type":"string",
+                         "value":"Shoot a rocket under yourself to\nlaunch yourself into the air."
+                        }],
+                 "rotation":0,
+                 "type":"Trigger",
+                 "visible":true,
+                 "width":24,
+                 "x":-84,
+                 "y":96
+                }, 
+                {
+                 "height":24,
+                 "id":92,
+                 "name":"",
+                 "properties":[
+                        {
+                         "name":"texture_id",
+                         "type":"string",
+                         "value":"question_mark"
+                        }],
+                 "rotation":0,
+                 "type":"Graphics",
+                 "visible":true,
+                 "width":24,
+                 "x":-84,
+                 "y":96
+                }, 
+                {
+                 "height":24,
+                 "id":97,
+                 "name":"",
+                 "properties":[
+                        {
+                         "name":"action",
+                         "type":"string",
+                         "value":"DebugText"
+                        }, 
+                        {
+                         "name":"text",
+                         "type":"string",
+                         "value":"This one is tricky"
+                        }],
+                 "rotation":0,
+                 "type":"Trigger",
+                 "visible":true,
+                 "width":24,
+                 "x":1440,
+                 "y":96
+                }, 
+                {
+                 "height":24,
+                 "id":98,
+                 "name":"",
+                 "properties":[
+                        {
+                         "name":"texture_id",
+                         "type":"string",
+                         "value":"question_mark"
+                        }],
+                 "rotation":0,
+                 "type":"Graphics",
+                 "visible":true,
+                 "width":24,
+                 "x":1440,
+                 "y":96
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -1152,7 +1230,7 @@
          "y":0
         }],
  "nextlayerid":9,
- "nextobjectid":91,
+ "nextobjectid":99,
  "orientation":"orthogonal",
  "renderorder":"right-down",
  "tiledversion":"1.11.2",

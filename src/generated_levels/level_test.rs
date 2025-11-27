@@ -1,5 +1,5 @@
 #![allow(clippy::excessive_precision, clippy::pedantic)]
-/// Generated from file `test_level.tmj` on `2025-11-27 15:21:37.348202+00:00`
+/// Generated from file `test_level.tmj` on `2025-11-27 17:09:10.636071+00:00`
 use crate::levels;
 use glam::vec2;
 
@@ -53,6 +53,10 @@ pub fn build(mut builder: levels::LevelBuilder) -> levels::Level {
     builder.rect(Some("bricks_dark"), vec2(-468.685, 699.48), vec2(8.037, 7.706));
     builder.polygon_trigger(levels::TriggerKind::Panic, &[vec2(-474.667, 723.667), vec2(-468.333, 699.667), vec2(-460.667, 699.333), vec2(-380., 749.333), vec2(-378.667, 761.667), vec2(-416.333, 780.333), vec2(-453.333, 769.333), vec2(-475.333, 743.333)]);
     builder.rect_trigger(levels::TriggerKind::Hello, vec2(24., 60.), vec2(72., 60.));
+    builder.rect_trigger(levels::TriggerKind::DebugText("Shoot a rocket under yourself to\nlaunch yourself into the air."), vec2(-84., 96.), vec2(24., 24.));
+    builder.rect_graphics("question_mark", vec2(-84., 96.), vec2(24., 24.));
+    builder.rect_trigger(levels::TriggerKind::DebugText("This one is tricky"), vec2(1440., 96.), vec2(24., 24.));
+    builder.rect_graphics("question_mark", vec2(1440., 96.), vec2(24., 24.));
     builder.level_start(vec2(-120., 96.));
     builder.build_or_die()
 }

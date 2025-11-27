@@ -4,9 +4,12 @@ use glam::{
     Vec2,
     vec2,
 };
-use macroquad::math::{
-    Circle,
-    Rect,
+use macroquad::{
+    math::{
+        Circle,
+        Rect,
+    },
+    texture::Texture2D,
 };
 use nalgebra::{
     Isometry2,
@@ -26,7 +29,6 @@ use parry2d::{
 };
 
 use crate::draw_utils::{
-    DrawOpts,
     draw_textured_poly,
     draw_textured_rect,
 };
@@ -45,18 +47,18 @@ pub struct Level {
 }
 
 pub enum Graphic {
-    Rect { pos: Vec2, wh: Vec2, draw: DrawOpts },
-    Polygon { points: Vec<Vec2>, draw: DrawOpts },
+    Rect { pos: Vec2, wh: Vec2, texture: Texture2D },
+    Polygon { points: Vec<Vec2>, texture: Texture2D },
 }
 
 impl Graphic {
     fn macroquad_draw(&self) {
         match self {
-            Graphic::Rect { pos, wh, draw } => {
-                draw_textured_rect(*pos, *wh, draw.clone());
+            Graphic::Rect { pos, wh, texture } => {
+                draw_textured_rect(*pos, *wh, texture.into());
             }
-            Graphic::Polygon { points, draw } => {
-                draw_textured_poly(points, draw.clone());
+            Graphic::Polygon { points, texture } => {
+                draw_textured_poly(points, texture.into());
             }
         }
     }
@@ -66,6 +68,7 @@ impl Graphic {
 pub enum TriggerKind {
     Panic,
     Hello,
+    DebugText(&'static str),
 }
 
 impl Level {
@@ -117,19 +120,19 @@ impl Level {
 }
 
 pub struct LevelBuilder {
-    draw_opts: HashMap<&'static str, DrawOpts>,
-    rects: Vec<(Vec2, Vec2, DrawOpts)>,
-    polygons: Vec<(Vec<Vec2>, DrawOpts)>,
-    rects_graphics: Vec<(Vec2, Vec2, DrawOpts)>,
-    polygons_graphics: Vec<(Vec<Vec2>, DrawOpts)>,
+    textures: HashMap<&'static str, Texture2D>,
+    rects: Vec<(Vec2, Vec2, Option<&'static str>)>,
+    polygons: Vec<(Vec<Vec2>, Option<&'static str>)>,
+    rects_graphics: Vec<(Vec2, Vec2, &'static str)>,
+    polygons_graphics: Vec<(Vec<Vec2>, &'static str)>,
     triggers: Vec<(TriggerKind, ConvexPolygon)>,
     level_start: Vec2,
 }
 
 impl LevelBuilder {
-    pub fn new(draw_opts: HashMap<&'static str, DrawOpts>) -> LevelBuilder {
+    pub fn new(textures: HashMap<&'static str, Texture2D>) -> LevelBuilder {
         LevelBuilder {
-            draw_opts,
+            textures,
             rects: Vec::with_capacity(64),
             polygons: Vec::with_capacity(64),
             rects_graphics: Vec::with_capacity(32),
@@ -139,21 +142,21 @@ impl LevelBuilder {
         }
     }
 
-    fn texture_to_draw_opts(&self, texture: Option<&'static str>) -> DrawOpts {
-        match texture {
-            Some(name) => self.draw_opts[name].clone(),
-            None => macroquad::color::Color::new(0.0, 0.0, 0.0, 0.0).into(),
-        }
+    pub fn lookup_texture_or_die(&self, name: &'static str) -> Texture2D {
+        self.textures
+            .get(name)
+            .unwrap_or_else(|| panic!("Unknown texture referenced: {name}"))
+            .clone()
     }
 
     pub fn polygon(&mut self, texture: Option<&'static str>, points: &[Vec2]) {
         // TODO: skip drawing stuff when texture is None
-        self.polygons.push((points.to_vec(), self.texture_to_draw_opts(texture)));
+        self.polygons.push((points.to_vec(), texture));
     }
 
     pub fn rect(&mut self, texture: Option<&'static str>, xy: Vec2, wh: Vec2) {
         // TODO: skip drawing stuff when texture is None
-        self.rects.push((xy, wh, self.texture_to_draw_opts(texture)));
+        self.rects.push((xy, wh, texture));
     }
 
     pub fn rect_trigger(&mut self, action: TriggerKind, xy: Vec2, wh: Vec2) {
@@ -163,11 +166,11 @@ impl LevelBuilder {
     }
 
     pub fn polygon_graphics(&mut self, texture: &'static str, points: &[Vec2]) {
-        self.polygons_graphics.push((points.to_vec(), self.texture_to_draw_opts(Some(texture))));
+        self.polygons_graphics.push((points.to_vec(), texture));
     }
 
     pub fn rect_graphics(&mut self, texture: &'static str, xy: Vec2, wh: Vec2) {
-        self.rects_graphics.push((xy, wh, self.texture_to_draw_opts(Some(texture))));
+        self.rects_graphics.push((xy, wh, texture));
     }
 
     pub fn level_start(&mut self, point: Vec2) {
@@ -188,30 +191,49 @@ impl LevelBuilder {
 
         let rect_aabb = |pos: Vec2, wh: Vec2| Aabb::new(vec_to_parry(pos), vec_to_parry(pos + wh));
 
-        for (pos, wh, draw) in &self.rects_graphics {
-            graphics.push(Graphic::Rect { pos: *pos, wh: *wh, draw: draw.clone() });
+        for (pos, wh, tex_name) in &self.rects_graphics {
+            graphics.push(Graphic::Rect {
+                pos: *pos,
+                wh: *wh,
+                texture: self.lookup_texture_or_die(tex_name),
+            });
             graphics_aabbs.push(rect_aabb(*pos, *wh));
         }
 
-        for (points, draw) in &self.polygons_graphics {
-            graphics.push(Graphic::Polygon { points: points.clone(), draw: draw.clone() });
+        for (points, tex_name) in &self.polygons_graphics {
+            graphics.push(Graphic::Polygon {
+                points: points.clone(),
+                texture: self.lookup_texture_or_die(tex_name),
+            });
             graphics_aabbs.push(Aabb::from_points(points.iter().copied().map(vec_to_parry)));
         }
 
-        for (pos, wh, draw) in &self.rects {
-            graphics.push(Graphic::Rect { pos: *pos, wh: *wh, draw: draw.clone() });
+        for (pos, wh, tex_name) in &self.rects {
+            if let Some(tex_name) = tex_name {
+                graphics.push(Graphic::Rect {
+                    pos: *pos,
+                    wh: *wh,
+                    texture: self.lookup_texture_or_die(tex_name),
+                });
+                graphics_aabbs.push(rect_aabb(*pos, *wh));
+            }
             rect_colliders.push(Rect { x: pos.x, y: pos.y, w: wh.x, h: wh.y });
-            graphics_aabbs.push(rect_aabb(*pos, *wh));
         }
 
-        for (points, draw) in &self.polygons {
+        for (points, tex_name) in &self.polygons {
             let points = points.clone();
             let parry2d_points: Vec<_> = points.iter().copied().map(vec_to_parry).collect();
 
             poly_colliders
                 .push(ConvexPolygon::from_convex_hull(&parry2d_points).expect("invalid polygon"));
-            graphics_aabbs.push(Aabb::from_points(points.iter().copied().map(vec_to_parry)));
-            graphics.push(Graphic::Polygon { points, draw: draw.clone() });
+
+            if let Some(tex_name) = tex_name {
+                graphics_aabbs.push(Aabb::from_points(points.iter().copied().map(vec_to_parry)));
+                graphics.push(Graphic::Polygon {
+                    points,
+                    texture: self.lookup_texture_or_die(tex_name),
+                });
+            }
         }
         let graphics_bvh = Bvh::from_leaves(BvhBuildStrategy::Ploc, &graphics_aabbs);
 

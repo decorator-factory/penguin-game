@@ -10,10 +10,7 @@ use macroquad::prelude::*;
 use miniquad::TextureWrap;
 use parry2d::shape::ConvexPolygon;
 
-use crate::{
-    draw_utils::DrawOpts,
-    levels,
-};
+use crate::levels;
 
 const UPS_NORMAL: f64 = 240.;
 const UPS_FAST: f64 = 1200.;
@@ -142,21 +139,25 @@ pub async fn run_game(device: &mut impl crate::input::InputDevice, new_level: bo
         });
 
         let fps = get_fps();
-        let stats_line = &format!(
-            "up:{} fr:{} dev:{} perf:{}",
+        let stats_line = format!(
+            "perf:{} up:{} fr:{} dev:{}",
+            stats,
             update_number,
             frame_number,
             device.device_info(),
-            stats
         );
+        let fps_line = format!("FPS: {fps:03}, target UPS: {ups:04}");
+
+        let font_size = 16.0;
         stats.measure_graphics(|| {
             graphics::draw_state(&state, device.look_angle_radians());
-            draw_text(&format!("FPS: {fps:03}, target UPS: {ups:04}"), 32., 32., 16., WHITE);
-            draw_text(stats_line, 32., 48., 16., WHITE);
-            let mut y = 64.0;
+            let mut y = font_size * 1.25;
+            y += draw_text(&fps_line, 8.0, y, font_size, WHITE).height + 2.0;
+            y += draw_text(&stats_line, 8.0, y, font_size, WHITE).height + 2.0;
             for string in &state.debug_strings {
-                draw_text(string, 32.0, y, 16.0, WHITE);
-                y += 16.0;
+                for line in string.lines() {
+                    y += draw_text(line, 8.0, y, font_size, WHITE).height + 2.0;
+                }
             }
         });
         next_frame().await;
@@ -490,6 +491,9 @@ mod updates {
                 crate::levels::TriggerKind::Hello => {
                     state.debug_strings.push(format!("Hello from {poly:?}"));
                 }
+                crate::levels::TriggerKind::DebugText(text) => {
+                    state.debug_strings.push(format!("\nDebugText:\n{text}"));
+                }
             }
         }
     }
@@ -687,34 +691,45 @@ macro_rules! include_with_name {
 
 #[inline(never)]
 #[rustfmt::skip]
-fn load_textures() -> HashMap<&'static str, DrawOpts> {
+fn load_textures() -> HashMap<&'static str, Texture2D> {
     HashMap::from([
-        ("arrow_left", make_wrapping_png_texture(include_with_name!("./assets/arrow_left.png")).into()),
-        ("barrier", make_wrapping_png_texture(include_with_name!("./assets/barrier.png")).into()),
-        ("bricks", make_wrapping_png_texture(include_with_name!("./assets/bricks.png")).into()),
-        ("bricks_dark", make_wrapping_png_texture(include_with_name!("./assets/bricks_dark.png")).into()),
-        ("caution", make_wrapping_png_texture(include_with_name!("./assets/caution.png")).into()),
-        ("wood", make_wrapping_png_texture(include_with_name!("./assets/wood.png")).into()),
-        ("wood_dark", make_wrapping_png_texture(include_with_name!("./assets/wood_dark.png")).into()),
+        ("arrow_left", include_texture(include_with_name!("./assets/arrow_left.png"), true)),
+        ("barrier", include_texture(include_with_name!("./assets/barrier.png"), true)),
+        ("bricks", include_texture(include_with_name!("./assets/bricks.png"), true)),
+        ("bricks_dark", include_texture(include_with_name!("./assets/bricks_dark.png"), true)),
+        ("caution", include_texture(include_with_name!("./assets/caution.png"), true)),
+        ("wood", include_texture(include_with_name!("./assets/wood.png"), true)),
+        ("wood_dark", include_texture(include_with_name!("./assets/wood_dark.png"), true)),
+
+        ("question_mark", include_texture(include_with_name!("./assets/question_mark.png"), false)),
     ])
 }
 
-fn make_wrapping_png_texture((path, png_bytes): (&str, &[u8])) -> Texture2D {
-    // SAFETY: internal context does not escape this function
-    let ctx = unsafe { get_internal_gl() }.quad_context;
+fn include_texture((path, png_bytes): (&str, &[u8]), repeating: bool) -> Texture2D {
     let img = image::load_from_memory_with_format(png_bytes, ImageFormat::Png)
         .unwrap_or_else(|e| panic!("Could not read PNG from {path}: {e}"));
     let bytes = img.to_rgba8().into_raw();
 
-    assert!(
-        img.width().is_power_of_two() && img.height().is_power_of_two(),
-        "WebGL doesn't support repeating non-power-of-two textures",
-    );
+    let wrap = if repeating {
+        assert!(
+            img.width().is_power_of_two() && img.height().is_power_of_two(),
+            "Repeating textures must be a power of two on WebGL. But the size of {} is {}x{}",
+            path,
+            img.width(),
+            img.height()
+        );
+        TextureWrap::Repeat
+    } else {
+        // WebGL doesn't support repeating non-power-of-two textures
+        TextureWrap::Clamp
+    };
 
+    // SAFETY: internal context does not escape this function
+    let ctx = unsafe { get_internal_gl() }.quad_context;
     let texture_id = ctx.new_texture_from_data_and_format(&bytes, miniquad::TextureParams {
         width: img.width(),
         height: img.height(),
-        wrap: TextureWrap::Repeat,
+        wrap,
         ..Default::default()
     });
     Texture2D::from_miniquad_texture(texture_id)

@@ -41,19 +41,26 @@ pub fn build(mut builder: levels::LevelBuilder) -> levels::Level {
 """.strip()
 
 
-def trigger_action_expr(obj: dict[str, Any]) -> str:
+def extract_property(obj: dict[str, Any], name: str) -> Any:
     for prop in obj.get("properties", []):
-        if prop["name"] == "action":
-            match prop.get("value"):
-                case "Panic":
-                    return "levels::TriggerKind::Panic"
-                case "Hello":
-                    return "levels::TriggerKind::Hello"
-                case _:
-                    raise Exception(
-                        f"Unknown action in trigger object with id={obj['id']}"
-                    )
-    raise Exception(f"Expected an action for trigger object with id={obj['id']}")
+        if prop["name"] == name:
+            return prop.get("value")
+    raise Exception(f"Expected property {name!r} not found in object with id={obj["id"]}")
+
+
+def trigger_action_expr(obj: dict[str, Any]) -> str:
+    match extract_property(obj, "action"):
+        case "Panic":
+            return "levels::TriggerKind::Panic"
+        case "Hello":
+            return "levels::TriggerKind::Hello"
+        case "DebugText":
+            text = extract_property(obj, "text")
+            return f"levels::TriggerKind::DebugText({json.dumps(text)})"
+        case _:
+            raise Exception(
+                f"Unknown action in trigger object with id={obj['id']}"
+            )
 
 
 def maybe_texture_expr(obj: dict[str, Any]) -> str:
@@ -74,14 +81,9 @@ def vec_expr(x: float, y: float) -> str:
 
 
 def texture_expr(obj: dict[str, Any]) -> str:
-    for prop in obj.get("properties", []):
-        if prop["name"] == "texture_id":
-            value = prop["value"]
-            assert '"' not in value and "\\" not in value
-            if not value:
-                break
-            return f'"{value}"'
-    raise Exception(f"Expected {obj['id']} to have a texture_id")
+    value = extract_property(obj, "texture_id")
+    assert '"' not in value and "\\" not in value
+    return f'"{value}"'
 
 
 def polygon_to_expr(obj: list[dict[str, Any]], x: float, y: float) -> str:
