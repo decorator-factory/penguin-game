@@ -483,7 +483,9 @@ mod updates {
         for (kind, poly) in triggers {
             match kind {
                 crate::levels::TriggerKind::Panic => {
-                    panic!("You have entered a Panic trigger. This is not a bug. Game state: {state:#?}")
+                    panic!(
+                        "You have entered a Panic trigger. This is not a bug. Game state: {state:#?}"
+                    )
                 }
                 crate::levels::TriggerKind::Hello => {
                     state.debug_strings.push(format!("Hello from {poly:?}"));
@@ -562,6 +564,7 @@ mod graphics {
         PENGUIN_RADIUS,
         ROCKET_RADIUS,
     };
+    use crate::draw_utils::draw_vclipped_circle;
     use macroquad::prelude::*;
 
     pub fn draw_state(state: &GameState, look_angle: f32) {
@@ -623,7 +626,7 @@ mod graphics {
     }
 
     const PENGUINGRAY: Color = Color::new(0.12, 0.12, 0.22, 1.0);
-    const PENGUINGRAY_DIM: Color = Color::new(0.25, 0.25, 0.4, 1.0);
+    const PENGUINGRAY_EMPTY: Color = Color::new(0.3, 0.3, 0.4, 1.0);
 
     fn draw_penguin(pos: Vec2, vel: Vec2, eyes_dir: Vec2, fuel: u16) {
         const RAD: f32 = PENGUIN_RADIUS;
@@ -646,9 +649,9 @@ mod graphics {
                 );
             }
         }
-        draw_circle(cx, cy, RAD, PENGUINGRAY_DIM);
+        draw_circle(cx, cy, RAD, PENGUINGRAY_EMPTY);
         draw_circle(cx, cy, RAD / 1.5, PENGUINGRAY);
-        crate::draw_utils::draw_vclipped_circle(cx, cy, RAD, fill_fraction, PENGUINGRAY);
+        draw_vclipped_circle(cx, cy, RAD, fill_fraction, PENGUINGRAY);
         draw_circle_lines(cx, cy, RAD - 1.0, 2.0, PENGUINGRAY);
 
         draw_ellipse(cx, cy + RAD * 0.4, RAD * 0.65, RAD * 0.4, 0.0, LIGHTGRAY);
