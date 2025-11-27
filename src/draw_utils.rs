@@ -23,7 +23,21 @@ impl From<&Texture2D> for DrawOpts {
 }
 
 pub fn draw_textured_rect(pos: Vec2, wh: Vec2, opts: impl Into<DrawOpts>) {
-    draw_textured_poly(&[pos, pos + wh.with_y(0.), pos + wh, pos + wh.with_x(0.)], opts);
+    // SAFETY: internal context does not escape this function
+    let gl = unsafe { get_internal_gl() }.quad_gl;
+    let DrawOpts(color, texture) = opts.into();
+
+    let points = [pos, pos + wh.with_y(0.0), pos + wh, pos + wh.with_x(0.0)];
+    let vertices = points.map(|point| {
+        // TODO: right now we draw all textures as if they started repeating at (0, 0)
+        // Should we add an option to repeat them as if they started at (x, y)?
+        let (u, v) = (point.x / texture.width(), point.y / texture.height());
+        Vertex::new(point.x, point.y, 0., u, v, color)
+    });
+
+    gl.texture(Some(&texture));
+    gl.draw_mode(DrawMode::Triangles);
+    gl.geometry(&vertices, &[0, 1, 2, 0, 2, 3]);
 }
 
 pub fn draw_textured_poly(points: &[Vec2], opts: impl Into<DrawOpts>) {
@@ -32,13 +46,10 @@ pub fn draw_textured_poly(points: &[Vec2], opts: impl Into<DrawOpts>) {
     // SAFETY: internal context does not escape this function
     let gl = unsafe { get_internal_gl() }.quad_gl;
 
-    // can't use ArrayVec because `N * 3` isn't a thing. Boo
-    // https://github.com/rust-lang/rust/issues/76560
     let mut vertices = Vec::<Vertex>::with_capacity(points.len());
     let mut indices = Vec::<u16>::with_capacity(points.len() * 3);
 
-    // what's a few clone() calls between friends
-    let DrawOpts(color, texture) = opts.into().clone();
+    let DrawOpts(color, texture) = opts.into();
 
     for (i, point) in points.iter().enumerate() {
         // TODO: right now we draw all textures as if they started repeating at (0, 0)

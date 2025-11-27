@@ -158,12 +158,8 @@ impl LevelBuilder {
 
     pub fn rect_trigger(&mut self, action: TriggerKind, xy: Vec2, wh: Vec2) {
         debug_assert!(wh.is_finite() && wh.x >= 0.0 && wh.y >= 0.0, "Invalid 'wh': {wh}");
-        let points = Vec::from_iter(
-            [xy + wh, xy + wh.with_y(0.0), xy, xy + wh.with_x(0.0)].map(vec_to_parry),
-        );
-        let poly = ConvexPolygon::from_convex_polyline_unmodified(points)
-            .unwrap_or_else(|| panic!("Invalid rect provided for polygon: xy={xy:?}, wh={wh:?}"));
-        self.triggers.push((action, poly));
+        let points = [xy + wh, xy + wh.with_y(0.0), xy, xy + wh.with_x(0.0)];
+        self.polygon_trigger(action, &points);
     }
 
     pub fn polygon_graphics(&mut self, texture: &'static str, points: &[Vec2]) {
