@@ -2,6 +2,9 @@
 Requires Python 3.12 or later. No other dependencies.
 
 NB: in Python's "type annotation" system, `float` means `int | float`. Annoying.
+
+NB2: polygon colliders are supposed to be convex for now, but we never check for that.
+     if a polygon collider
 """
 
 import json
@@ -21,10 +24,12 @@ level_path = Path(sys.argv[1])
 with open(level_path, "rb") as file:
     level = json.load(file)
 
-layer = next((layer for layer in level["layers"] if layer["name"] == "Objects"), None)
-if layer is None:
-    sys.stderr.write("error: Layer 'Objects' not found in the level\n")
+layers = [layer for layer in level["layers"] if layer["name"] in ("Objects", "Triggers")]
+if not layers:
+    sys.stderr.write("error: Must have at least 'Objects' or 'Triggers' layer\n")
     sys.exit(1)
+
+all_objects = [obj for layer in layers for obj in layer["objects"]]
 
 TEMPLATE = """
 #![allow(clippy::excessive_precision, clippy::pedantic)]
@@ -94,7 +99,7 @@ def polygon_to_expr(obj: list[dict[str, Any]], x: float, y: float) -> str:
 lines: list[str] = []
 level_start: str | None = None
 
-for obj in layer["objects"]:
+for obj in all_objects:
     # Beware: Tiled exports are kinda cursed. For example, polygons have `x` and `y`
     # fields (which represent an offset) as well as `width` and `height` (which to my
     # knowledge don't represent anything and just chill out there).
