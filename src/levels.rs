@@ -34,9 +34,11 @@ use crate::draw_utils::{
 };
 
 pub struct Level {
+    start_pos: Vec2,
+
+    collision_bvh: Bvh, // ids: rects first, then polys
     rect_colliders: Vec<Rect>,
     poly_colliders: Vec<ConvexPolygon>,
-    start_pos: Vec2,
 
     triggers_bvh: Bvh,
     triggers: Vec<(TriggerKind, ConvexPolygon)>,
@@ -106,12 +108,21 @@ impl Level {
         rv
     }
 
-    pub fn rect_colliders(&self) -> &[Rect] {
-        &self.rect_colliders
-    }
+    pub fn collision_candidates_at(&self, rect: Rect) -> (Vec<Rect>, Vec<&ConvexPolygon>) {
+        let aabb = rect_aabb(rect);
+        let mut rects = Vec::new();
+        let mut polys = Vec::new();
 
-    pub fn poly_colliders(&self) -> &[ConvexPolygon] {
-        &self.poly_colliders
+        let rect_count = self.rect_colliders.len();
+        for index in self.collision_bvh.intersect_aabb(&aabb) {
+            if (index as usize) < rect_count {
+                rects.push(self.rect_colliders[index as usize]);
+            } else {
+                polys.push(&self.poly_colliders[index as usize - rect_count]);
+            }
+        }
+
+        (rects, polys)
     }
 
     pub fn start_pos(&self) -> Vec2 {
@@ -187,6 +198,8 @@ impl LevelBuilder {
         );
         let mut rect_colliders = Vec::with_capacity(self.rects.len());
         let mut poly_colliders = Vec::with_capacity(self.polygons.len());
+        let mut collision_aabbs: Vec<Aabb> =
+            Vec::with_capacity(self.rects.len() + self.polygons.len());
         let mut graphics_aabbs: Vec<Aabb> = Vec::with_capacity(graphics.capacity());
 
         let rect_aabb = |pos: Vec2, wh: Vec2| Aabb::new(vec_to_parry(pos), vec_to_parry(pos + wh));
@@ -209,26 +222,31 @@ impl LevelBuilder {
         }
 
         for (pos, wh, tex_name) in &self.rects {
+            let aabb = rect_aabb(*pos, *wh);
             if let Some(tex_name) = tex_name {
                 graphics.push(Graphic::Rect {
                     pos: *pos,
                     wh: *wh,
                     texture: self.lookup_texture_or_die(tex_name),
                 });
-                graphics_aabbs.push(rect_aabb(*pos, *wh));
+                graphics_aabbs.push(aabb);
             }
             rect_colliders.push(Rect { x: pos.x, y: pos.y, w: wh.x, h: wh.y });
+            collision_aabbs.push(aabb);
         }
 
         for (points, tex_name) in &self.polygons {
+            let aabb = Aabb::from_points(points.iter().copied().map(vec_to_parry));
+
             let points = points.clone();
             let parry2d_points: Vec<_> = points.iter().copied().map(vec_to_parry).collect();
 
             poly_colliders
                 .push(ConvexPolygon::from_convex_hull(&parry2d_points).expect("invalid polygon"));
+            collision_aabbs.push(aabb);
 
             if let Some(tex_name) = tex_name {
-                graphics_aabbs.push(Aabb::from_points(points.iter().copied().map(vec_to_parry)));
+                graphics_aabbs.push(aabb);
                 graphics.push(Graphic::Polygon {
                     points,
                     texture: self.lookup_texture_or_die(tex_name),
@@ -236,6 +254,7 @@ impl LevelBuilder {
             }
         }
         let graphics_bvh = Bvh::from_leaves(BvhBuildStrategy::Ploc, &graphics_aabbs);
+        let collision_bvh = Bvh::from_leaves(BvhBuildStrategy::Ploc, &collision_aabbs);
 
         let triggers_bvh = {
             let aabbs = self.triggers.iter().map(|(_, poly)| poly.aabb(&Isometry2::default()));
@@ -246,6 +265,7 @@ impl LevelBuilder {
         Level {
             rect_colliders,
             poly_colliders,
+            collision_bvh,
             start_pos,
             graphics,
             graphics_bvh,

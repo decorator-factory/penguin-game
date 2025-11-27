@@ -85,7 +85,7 @@ impl GameState {
     }
 }
 
-pub async fn run_game(device: &mut impl crate::input::InputDevice, new_level: bool) {
+pub async fn run_game(device: &mut dyn crate::input::InputDevice, new_level: bool) {
     let builder = levels::LevelBuilder::new(load_textures());
     let level = if new_level {
         // this is very MVP quality...
@@ -237,7 +237,6 @@ mod updates {
         Explosion,
         GameState,
         PENGUIN_RADIUS,
-        Penguin,
         ROCKET_RADIUS,
         Rocket,
     };
@@ -282,23 +281,14 @@ mod updates {
 
     pub fn fixed_update(state: &mut GameState, device: &dyn InputDevice) {
         state.debug_strings.clear();
-
         update_ttl(&mut state.rockets, &mut state.explosions);
-        update_rockets_movement(
-            &mut state.rockets,
-            state.level.rect_colliders(),
-            state.level.poly_colliders(),
-        );
-        update_penguin_movement(
-            device,
-            &mut state.penguin,
-            state.level.rect_colliders(),
-            state.level.poly_colliders(),
-            &mut state.explosions,
-            |debug| state.debug_strings.push(debug),
-        );
+        update_rockets_movement(state);
+        update_penguin_movement(state, device);
+        update_shooting(state, device);
         apply_penguin_triggers(state);
+    }
 
+    fn update_shooting(state: &mut GameState, device: &dyn InputDevice) {
         state.penguin.rocket_cooldown = state.penguin.rocket_cooldown.saturating_sub(1);
         // Spawn rocket
         if state.penguin.fuel >= FUEL_ROCKET_COST
@@ -320,14 +310,9 @@ mod updates {
         }
     }
 
-    fn update_penguin_movement(
-        device: &dyn InputDevice,
-        penguin: &mut Penguin,
-        rects: &[Rect],
-        polygons: &[ConvexPolygon],
-        explosions: &mut [Explosion],
-        mut debug: impl FnMut(String),
-    ) {
+    fn update_penguin_movement(state: &mut GameState, device: &dyn InputDevice) {
+        let penguin = &mut state.penguin;
+
         let (accel, mut friction) = if penguin.is_grounded {
             (WALK_ACCEL_GROUND, FRICTION_GROUND)
         } else {
@@ -360,7 +345,19 @@ mod updates {
 
         // Penguin collision detection
         let penguin_circle = Circle::new(penguin.pos.x, penguin.pos.y, PENGUIN_RADIUS);
-        for exp in explosions {
+
+        let (rects, polygons) = {
+            let mut aabb_circle = penguin_circle;
+            aabb_circle.scale(2.0);
+            state.level.collision_candidates_at(circle_aabb(aabb_circle))
+        };
+
+        state.debug_strings.extend_from_slice(&[
+            format!("speed: x={:+.2}, y={:+.2}", penguin.vel.x, penguin.vel.y),
+            format!("collision candidates: rects={}, polygons={}", rects.len(), polygons.len()),
+        ]);
+
+        for exp in &mut state.explosions {
             let exp_circle = Circle::new(exp.pos.x, exp.pos.y, exp.radius);
             if let Some((dir, scale)) = penguin_impacts_explosion(penguin_circle, exp_circle) {
                 penguin.vel += dir * exp.force * scale;
@@ -373,7 +370,7 @@ mod updates {
         let mut any_delta_points_upwards = false; // has any of the collisions pushed us upwards?
 
         for rect in rects {
-            if let Some(dv) = circle_impacts_rect(penguin_circle.offset(penguin.vel), *rect) {
+            if let Some(dv) = circle_impacts_rect(penguin_circle.offset(penguin.vel), rect) {
                 penguin.pos += dv;
 
                 if dv.length_squared() > 1e-6 {
@@ -382,7 +379,7 @@ mod updates {
                 }
             }
 
-            if let Some(dv) = circle_impacts_rect(penguin_if_it_were_to_fall, *rect) {
+            if let Some(dv) = circle_impacts_rect(penguin_if_it_were_to_fall, rect) {
                 dv_for_grounded += dv;
 
                 let angle = dv.to_angle();
@@ -416,19 +413,22 @@ mod updates {
         };
         penguin.is_grounded = is_grounded;
 
-        debug(format!("speed: x={:+.2}, y={:+.2}", penguin.vel.x, penguin.vel.y));
-
         penguin.pos += penguin.vel;
     }
 
-    fn update_rockets_movement(rockets: &mut [Rocket], rects: &[Rect], polygons: &[ConvexPolygon]) {
-        for rocket in rockets.iter_mut() {
+    fn update_rockets_movement(state: &mut GameState) {
+        for rocket in &mut state.rockets {
             rocket.pos += rocket.vel;
         }
 
-        'outer: for rocket in rockets.iter_mut() {
+        'outer: for rocket in &mut state.rockets {
             let circle = Circle::new(rocket.pos.x, rocket.pos.y, ROCKET_RADIUS);
-            for &rect in rects {
+
+            let mut aabb_circle = circle;
+            aabb_circle.scale(2.0);
+            let (rects, polygons) = state.level.collision_candidates_at(circle_aabb(aabb_circle));
+
+            for rect in rects {
                 if circle_impacts_rect_alt(circle, rect).is_some() {
                     rocket.ttl = 0;
                     continue 'outer;
@@ -558,6 +558,10 @@ mod updates {
             let strength = 1.0 - dist / (penguin.radius() + exp.radius());
             (delta / dist, strength)
         })
+    }
+
+    fn circle_aabb(circle: Circle) -> Rect {
+        Rect::new(circle.x - circle.r, circle.y - circle.r, circle.r * 2.0, circle.r * 2.0)
     }
 }
 
