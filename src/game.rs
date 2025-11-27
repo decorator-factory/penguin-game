@@ -21,6 +21,11 @@ const ROCKET_RADIUS: f32 = 4.0;
 const FUEL_MAX: u16 = 240;
 const FUEL_ROCKET_COST: u16 = 100;
 
+const TOOLTIP_TTL_MAX: u16 = 600;
+const TOOLTIP_TTL_GROW_RATE: u16 = 6;
+const TOOLTIP_TTL_FADE_BEGIN: u16 = 240;
+const _: () = assert!(TOOLTIP_TTL_FADE_BEGIN < TOOLTIP_TTL_MAX, "");
+
 #[derive(Copy, Clone, Debug)]
 struct Penguin {
     pos: Vec2,
@@ -28,6 +33,12 @@ struct Penguin {
     rocket_cooldown: u16,
     fuel: u16,
     is_grounded: bool,
+}
+
+impl Penguin {
+    fn circle(&self) -> Circle {
+        Circle::new(self.pos.x, self.pos.y, PENGUIN_RADIUS)
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -46,12 +57,20 @@ struct Explosion {
     initial_ttl: u16,
 }
 
+#[derive(Clone, Debug)]
+struct Tooltip {
+    text: &'static str,
+    ttl: u16,
+    origin: Vec2,
+}
+
 struct GameState {
     penguin: Penguin,
     level: crate::levels::Level,
     rockets: Vec<Rocket>,
     explosions: Vec<Explosion>,
     debug_strings: Vec<String>,
+    tooltip: Tooltip,
 }
 
 impl std::fmt::Debug for GameState {
@@ -61,6 +80,7 @@ impl std::fmt::Debug for GameState {
             .field("rockets", &self.rockets)
             .field("explosions", &self.explosions)
             .field("debug_strings", &self.debug_strings)
+            .field("tooltip", &self.tooltip)
             .finish_non_exhaustive()
     }
 }
@@ -81,6 +101,7 @@ impl GameState {
             rockets: Vec::with_capacity(32),
             explosions: Vec::with_capacity(32),
             debug_strings: Vec::with_capacity(16),
+            tooltip: Tooltip { text: "", ttl: 0, origin: vec2(0.0, 0.0) },
         }
     }
 }
@@ -244,6 +265,10 @@ mod updates {
         game::{
             FUEL_MAX,
             FUEL_ROCKET_COST,
+            TOOLTIP_TTL_GROW_RATE,
+            TOOLTIP_TTL_MAX,
+            circle_impacts_rect,
+            circle_impacts_rect_alt,
         },
         input::{
             Input,
@@ -286,6 +311,12 @@ mod updates {
         update_penguin_movement(state, device);
         update_shooting(state, device);
         apply_penguin_triggers(state);
+
+        update_ui(state);
+    }
+
+    fn update_ui(state: &mut GameState) {
+        state.tooltip.ttl = state.tooltip.ttl.saturating_sub(1);
     }
 
     fn update_shooting(state: &mut GameState, device: &dyn InputDevice) {
@@ -344,10 +375,8 @@ mod updates {
         }
 
         // Penguin collision detection
-        let penguin_circle = Circle::new(penguin.pos.x, penguin.pos.y, PENGUIN_RADIUS);
-
         let (rects, polygons) = {
-            let mut aabb_circle = penguin_circle;
+            let mut aabb_circle = penguin.circle();
             aabb_circle.scale(2.0);
             state.level.collision_candidates_at(circle_aabb(aabb_circle))
         };
@@ -359,7 +388,7 @@ mod updates {
 
         for exp in &mut state.explosions {
             let exp_circle = Circle::new(exp.pos.x, exp.pos.y, exp.radius);
-            if let Some((dir, scale)) = penguin_impacts_explosion(penguin_circle, exp_circle) {
+            if let Some((dir, scale)) = penguin_impacts_explosion(penguin.circle(), exp_circle) {
                 penguin.vel += dir * exp.force * scale;
             }
         }
@@ -477,9 +506,7 @@ mod updates {
     }
 
     fn apply_penguin_triggers(state: &mut GameState) {
-        let penguin = state.penguin;
-        let triggers =
-            state.level.triggers_at(Circle::new(penguin.pos.x, penguin.pos.y, PENGUIN_RADIUS));
+        let triggers = state.level.triggers_at(state.penguin.circle());
 
         for (kind, poly) in triggers {
             match kind {
@@ -494,35 +521,17 @@ mod updates {
                 crate::levels::TriggerKind::DebugText(text) => {
                     state.debug_strings.push(format!("\nDebugText:\n{text}"));
                 }
+                crate::levels::TriggerKind::ShowText(text) => {
+                    let center_x = parry2d::utils::center(poly.points()).x;
+                    let min_y = poly.points().iter().map(|p| p.y).min_by(f32::total_cmp).unwrap();
+
+                    state.tooltip.text = text;
+                    state.tooltip.origin = vec2(center_x, min_y);
+                    state.tooltip.ttl =
+                        (state.tooltip.ttl + TOOLTIP_TTL_GROW_RATE).min(TOOLTIP_TTL_MAX);
+                }
             }
         }
-    }
-
-    /// If an intersection occurs, return how much to move the circle
-    fn circle_impacts_rect(circle: Circle, rect: Rect) -> Option<Vec2> {
-        let contact = circle_impacts_rect_alt(circle, rect)?;
-        let delta = contact.point1 - contact.point2;
-        Some(vec2(delta.x, delta.y))
-    }
-
-    /// Circle is the "second object"
-    fn circle_impacts_rect_alt(circle: Circle, rect: Rect) -> Option<parry2d::query::Contact> {
-        use nalgebra::{
-            Isometry2,
-            Vector2,
-        };
-        use parry2d::query;
-        use parry2d::shape::{
-            Ball,
-            Cuboid,
-        };
-
-        let cuboid = Cuboid::new(Vector2::new(rect.w / 2., rect.h / 2.));
-        let ball = Ball::new(circle.radius());
-
-        let cuboid_pos = Isometry2::translation(rect.x + rect.w / 2., rect.y + rect.h / 2.);
-        let ball_pos = Isometry2::translation(circle.x, circle.y);
-        query::contact(&cuboid_pos, &cuboid, &ball_pos, &ball, 0.0).unwrap()
     }
 
     /// If an intersection occurs, return how much to move the circle
@@ -572,7 +581,18 @@ mod graphics {
         PENGUIN_RADIUS,
         ROCKET_RADIUS,
     };
-    use crate::draw_utils::draw_vclipped_circle;
+    use crate::{
+        draw_utils::{
+            draw_rounded_rect,
+            draw_vclipped_circle,
+        },
+        game::{
+            Penguin,
+            TOOLTIP_TTL_FADE_BEGIN,
+            Tooltip,
+            circle_impacts_rect,
+        },
+    };
     use macroquad::prelude::*;
 
     pub fn draw_state(state: &GameState, look_angle: f32) {
@@ -587,6 +607,8 @@ mod graphics {
 
         let rect = Rect::new(viewport_offset.x, viewport_offset.y, screen_size.x, screen_size.y);
         state.level.macroquad_draw(rect);
+        draw_tooltip(&state.tooltip, &state.penguin);
+
         draw_penguin(
             state.penguin.pos,
             state.penguin.vel,
@@ -600,6 +622,68 @@ mod graphics {
             draw_explosion(explosion);
         }
         pop_camera_state();
+    }
+
+    fn draw_tooltip(tooltip: &Tooltip, penguin: &Penguin) {
+        const FONT_SIZE: u16 = 32;
+
+        if tooltip.ttl == 0 {
+            return;
+        }
+        let alpha = if tooltip.ttl < TOOLTIP_TTL_FADE_BEGIN {
+            f32::from(tooltip.ttl) / f32::from(TOOLTIP_TTL_FADE_BEGIN)
+        } else {
+            1.0
+        };
+
+        let default_anchor = tooltip.origin - vec2(0.0, 6.0);
+
+        // `measure_text` doesn't handle multiline text. Argh!
+        let text_size = tooltip
+            .text
+            .lines()
+            .map(|line| measure_text(line, None, FONT_SIZE, 1.0))
+            .fold(vec2(0.0, 0.0), |acc, dim| vec2(acc.x.max(dim.width), acc.y + dim.height));
+        let padding = vec2(8.0, 16.0);
+
+        let compute_pos_and_wh = |anchor| {
+            let top_left = anchor - vec2(text_size.x / 2.0, text_size.y) - padding * 2.0;
+            let dimensions = text_size + padding * 2.0;
+            (top_left, dimensions)
+        };
+
+        let (mut top_left, dimensions) = compute_pos_and_wh(default_anchor);
+
+        // move tooltip away if it would intersect with the penguin
+        let dpos = {
+            let rect = Rect::new(top_left.x, top_left.y, dimensions.x, dimensions.y);
+            let circle = Circle::new(penguin.pos.x, penguin.pos.y, PENGUIN_RADIUS + 8.0);
+            circle_impacts_rect(circle, rect)
+        };
+        if let Some(mut dpos) = dpos {
+            dpos = dpos.round();
+            top_left -= dpos;
+            draw_line(
+                default_anchor.x,
+                default_anchor.y,
+                default_anchor.x - dpos.x,
+                default_anchor.y - dpos.y,
+                2.0,
+                LIGHTGRAY.with_alpha(alpha),
+            );
+        }
+
+        draw_rounded_rect(top_left, dimensions, 4.0, WHITE.with_alpha(alpha));
+
+        let y_offset = measure_text("IAj_! ", None, FONT_SIZE, 1.0).offset_y;
+        draw_multiline_text(
+            tooltip.text,
+            top_left.x + padding.x,
+            top_left.y + padding.y + y_offset,
+            f32::from(FONT_SIZE),
+            Some(1.0),
+            BLACK.with_alpha(0.5 + alpha * 0.5),
+        );
     }
 
     fn viewport_offset_to_camera(offset: Vec2, screen_size: Vec2) -> Camera2D {
@@ -683,9 +767,39 @@ mod graphics {
         );
     }
 }
-//
+
+/// If an intersection occurs, return how much to move the circle
+fn circle_impacts_rect(circle: Circle, rect: Rect) -> Option<Vec2> {
+    let contact = circle_impacts_rect_alt(circle, rect)?;
+    let delta = contact.point1 - contact.point2;
+    Some(vec2(delta.x, delta.y))
+}
+
+/// Circle is the "second object"
+fn circle_impacts_rect_alt(circle: Circle, rect: Rect) -> Option<parry2d::query::Contact> {
+    use nalgebra::{
+        Isometry2,
+        Vector2,
+    };
+    use parry2d::query;
+    use parry2d::shape::{
+        Ball,
+        Cuboid,
+    };
+
+    let cuboid = Cuboid::new(Vector2::new(rect.w / 2., rect.h / 2.));
+    let ball = Ball::new(circle.radius());
+
+    let cuboid_pos = Isometry2::translation(rect.x + rect.w / 2., rect.y + rect.h / 2.);
+    let ball_pos = Isometry2::translation(circle.x, circle.y);
+    query::contact(&cuboid_pos, &cuboid, &ball_pos, &ball, 0.0).unwrap()
+}
+
+// fn measure_multiline_text(text: &str, font_size: u16) -> Vec2 {
+
+// }
+
 // Level stuff
-// TODO: make level editor
 
 macro_rules! include_with_name {
     ($name:expr) => {
@@ -739,6 +853,7 @@ fn include_texture((path, png_bytes): (&str, &[u8]), repeating: bool) -> Texture
     Texture2D::from_miniquad_texture(texture_id)
 }
 
+#[inline(never)]
 fn build_default_level(mut builder: levels::LevelBuilder) -> levels::Level {
     builder.level_start(vec2(240.0, -48.0));
 

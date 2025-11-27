@@ -127,6 +127,22 @@ pub fn draw_arrow(start: Vec2, end: Vec2, color: Color) {
     draw_triangle(v1, v2, v3, color);
 }
 
+/// TODO: handle partially transparent colors
+pub fn draw_rounded_rect(pos: Vec2, wh: Vec2, r: f32, color: Color) {
+    // AxxxxB
+    // yyyyyy
+    // CzzzzD
+
+    draw_rectangle(pos.x + r, pos.y, wh.x - r * 2.0, r, color); // x
+    draw_rectangle(pos.x, pos.y + r, wh.x, wh.y - r * 2.0, color); // y
+    draw_rectangle(pos.x + r, pos.y + wh.y - r, wh.x - r * 2.0, r, color); // z
+
+    draw_circle(pos.x + r, pos.y + r, r, color); // A
+    draw_circle(pos.x + wh.x - r, pos.y + r, r, color); // B
+    draw_circle(pos.x + r, pos.y + wh.y - r, r, color); // C
+    draw_circle(pos.x + wh.x - r, pos.y + wh.y - r, r, color); //
+}
+
 fn is_texture_repeating(backend: &dyn RenderingBackend, texture: &Texture2D) -> bool {
     let id = texture.raw_miniquad_id();
     matches!(backend.texture_params(id).wrap, TextureWrap::Repeat)

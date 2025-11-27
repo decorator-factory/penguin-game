@@ -42,8 +42,8 @@
                  "type":"LevelStart",
                  "visible":true,
                  "width":0,
-                 "x":-120,
-                 "y":36
+                 "x":-132,
+                 "y":96
                 }, 
                 {
                  "height":2040,
@@ -169,7 +169,7 @@
                  "type":"Graphics",
                  "visible":true,
                  "width":72,
-                 "x":24,
+                 "x":120,
                  "y":60
                 }, 
                 {
@@ -186,7 +186,7 @@
                  "type":"Collider",
                  "visible":true,
                  "width":96,
-                 "x":12,
+                 "x":108,
                  "y":36
                 }, 
                 {
@@ -203,7 +203,7 @@
                  "type":"Collider",
                  "visible":true,
                  "width":12,
-                 "x":96,
+                 "x":192,
                  "y":60
                 }, 
                 {
@@ -1100,7 +1100,7 @@
                         {
                          "name":"action",
                          "type":"string",
-                         "value":"DebugText"
+                         "value":"ShowText"
                         }, 
                         {
                          "name":"text",
@@ -1113,23 +1113,6 @@
                  "width":24,
                  "x":-84,
                  "y":96
-                }, 
-                {
-                 "height":60,
-                 "id":100,
-                 "name":"",
-                 "properties":[
-                        {
-                         "name":"action",
-                         "type":"string",
-                         "value":"Hello"
-                        }],
-                 "rotation":0,
-                 "type":"Trigger",
-                 "visible":true,
-                 "width":72,
-                 "x":24,
-                 "y":60
                 }, 
                 {
                  "height":0,
@@ -1219,12 +1202,12 @@
                         {
                          "name":"action",
                          "type":"string",
-                         "value":"DebugText"
+                         "value":"ShowText"
                         }, 
                         {
                          "name":"text",
                          "type":"string",
-                         "value":"This one is tricky"
+                         "value":"This one is tricky!\nBut still possible with one rocket jump.\nHarness the power of penguin jank."
                         }],
                  "rotation":0,
                  "type":"Trigger",
@@ -1232,6 +1215,45 @@
                  "width":24,
                  "x":1440,
                  "y":96
+                }, 
+                {
+                 "height":24,
+                 "id":104,
+                 "name":"",
+                 "properties":[
+                        {
+                         "name":"texture_id",
+                         "type":"string",
+                         "value":"question_mark"
+                        }],
+                 "rotation":0,
+                 "type":"Graphics",
+                 "visible":true,
+                 "width":24,
+                 "x":-528,
+                 "y":756
+                }, 
+                {
+                 "height":24,
+                 "id":105,
+                 "name":"",
+                 "properties":[
+                        {
+                         "name":"action",
+                         "type":"string",
+                         "value":"ShowText"
+                        }, 
+                        {
+                         "name":"text",
+                         "type":"string",
+                         "value":"Don't touch the banana!!"
+                        }],
+                 "rotation":0,
+                 "type":"Trigger",
+                 "visible":true,
+                 "width":24,
+                 "x":-528,
+                 "y":756
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -1240,7 +1262,7 @@
          "y":0
         }],
  "nextlayerid":10,
- "nextobjectid":104,
+ "nextobjectid":106,
  "orientation":"orthogonal",
  "renderorder":"right-down",
  "tiledversion":"1.11.2",

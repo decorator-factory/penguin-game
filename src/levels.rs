@@ -67,10 +67,12 @@ impl Graphic {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 pub enum TriggerKind {
     Panic,
     Hello,
     DebugText(&'static str),
+    ShowText(&'static str),
 }
 
 impl Level {
