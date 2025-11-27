@@ -8,7 +8,9 @@ This game is in very early development, but you can test it out in the browser:
 
 - Demo URL: https://decorator-factory.github.io/penguin-game/#demo (the penguin will move on its own)
 
-The available level is very short, intended to show the gist of the game. Your goal is to get to the platform inside the tower roof.
+- In-development level (WIP): https://decorator-factory.github.io/penguin-game/#new-level (the penguin will move on its own)
+
+The available content is very short, intended to show the gist of the game. Your goal is to get to the platform inside the tower roof.
 
 ![Penguin inside tower roof](screenshot.png)
 
@@ -23,7 +25,6 @@ The rules are simple: shoot a rocket under your feet, and the explosion blasts y
 
 Debug controls:
 - `R`: speed up the game 5 times (for debugging and demo development purposes)
-- `P`: crash the game
 
 If you get stuck, see how the demo penguin completes the level.
 
