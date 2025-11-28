@@ -26,13 +26,14 @@ const TOOLTIP_TTL_GROW_RATE: u16 = 6;
 const TOOLTIP_TTL_FADE_BEGIN: u16 = 240;
 const _: () = assert!(TOOLTIP_TTL_FADE_BEGIN < TOOLTIP_TTL_MAX, "");
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 struct Penguin {
     pos: Vec2,
     vel: Vec2,
     rocket_cooldown: u16,
     fuel: u16,
     is_grounded: bool,
+    has_eyepatch: bool,
 }
 
 impl Penguin {
@@ -93,6 +94,7 @@ impl GameState {
             is_grounded: false,
             fuel: FUEL_MAX,
             rocket_cooldown: 0,
+            has_eyepatch: false,
         };
 
         GameState {
@@ -325,6 +327,7 @@ mod updates {
         if state.penguin.fuel >= FUEL_ROCKET_COST
             && state.penguin.rocket_cooldown == 0
             && device.is_input_down(Input::Shoot)
+            && (!state.penguin.has_eyepatch || state.rockets.is_empty())
         {
             state.penguin.rocket_cooldown = ROCKET_SHOOT_COOLDOWN;
             state.penguin.fuel -= FUEL_ROCKET_COST;
@@ -535,6 +538,9 @@ mod updates {
                     state.tooltip.ttl =
                         (state.tooltip.ttl + TOOLTIP_TTL_GROW_RATE).min(TOOLTIP_TTL_MAX);
                 }
+                crate::levels::TriggerKind::SetEyepatch(yes) => {
+                    state.penguin.has_eyepatch = yes;
+                }
             }
         }
     }
@@ -615,12 +621,7 @@ mod graphics {
         state.level.macroquad_draw(rect);
         draw_tooltip(&state.tooltip, &state.penguin);
 
-        draw_penguin(
-            state.penguin.pos,
-            state.penguin.vel,
-            Vec2::from_angle(look_angle),
-            state.penguin.fuel,
-        );
+        draw_penguin(&state.penguin, Vec2::from_angle(look_angle));
         for &rocket in &state.rockets {
             draw_rocket(rocket.pos, rocket.vel);
         }
@@ -719,11 +720,14 @@ mod graphics {
 
     const PENGUINGRAY: Color = Color::new(0.12, 0.12, 0.22, 1.0);
     const PENGUINGRAY_EMPTY: Color = Color::new(0.3, 0.3, 0.4, 1.0);
+    const DARKRED: Color = Color::new(0.7, 0.0, 0.2, 1.0);
 
-    fn draw_penguin(pos: Vec2, vel: Vec2, eyes_dir: Vec2, fuel: u16) {
+    fn draw_penguin(penguin: &Penguin, eyes_dir: Vec2) {
         const RAD: f32 = PENGUIN_RADIUS;
+        let Penguin { pos, vel, fuel, has_eyepatch, .. } = penguin;
+
         let (cx, cy) = (pos.x, pos.y);
-        let fill_fraction = f32::from(fuel) / f32::from(super::FUEL_MAX);
+        let fill_fraction = f32::from(*fuel) / f32::from(super::FUEL_MAX);
 
         // Draw trail when moving at high speed
         if vel.length() > 1.8 {
@@ -731,7 +735,7 @@ mod graphics {
             let steps = ((vel.length() - 1.5) / 0.33).min(100.0) as u16;
             for i in 0..steps {
                 let fade_factor = 1. - f32::from(i) / f32::from(steps);
-                let dpos = pos - vel.normalize() * (1. + f32::from(i)) * 4.0;
+                let dpos = *pos - vel.normalize() * (1. + f32::from(i)) * 4.0;
                 draw_circle_lines(
                     dpos.x,
                     dpos.y,
@@ -754,9 +758,16 @@ mod graphics {
             let [vx, vy] = (vel.clamp_length_max(16.0) * 0.0125 * RAD).round().to_array();
 
             draw_circle(cx - RAD * 0.3 - vx, cy - RAD * 0.2 - vy, 5., WHITE);
-            draw_circle(cx + RAD * 0.3 - vx, cy - RAD * 0.2 - vy, 5., WHITE);
             draw_circle(cx - RAD * 0.3 - vx + look_x, cy - RAD * 0.2 + look_y - vy, 2., BLACK);
-            draw_circle(cx + RAD * 0.3 - vx + look_x, cy - RAD * 0.2 + look_y - vy, 2., BLACK);
+            if *has_eyepatch {
+                let [px, py] = vec2(cx + RAD * 0.3 - vx, cy - RAD * 0.2 - vy).to_array();
+                draw_circle(px, py, 6., DARKRED);
+                draw_line(px, py, px - RAD * 0.7, py - RAD * 0.7, 5.0, DARKRED);
+                draw_line(px, py, px + RAD * 0.7, py + RAD * 0.3, 5.0, DARKRED);
+            } else {
+                draw_circle(cx + RAD * 0.3 - vx, cy - RAD * 0.2 - vy, 5., WHITE);
+                draw_circle(cx + RAD * 0.3 - vx + look_x, cy - RAD * 0.2 + look_y - vy, 2., BLACK);
+            }
         }
 
         draw_triangle(

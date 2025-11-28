@@ -11,7 +11,6 @@
  "infinite":true,
  "layers":[
         {
-         "class":"Textured",
          "draworder":"topdown",
          "id":2,
          "name":"Objects",
@@ -32,18 +31,6 @@
                  "width":4644,
                  "x":-540,
                  "y":120
-                }, 
-                {
-                 "height":0,
-                 "id":5,
-                 "name":"",
-                 "point":true,
-                 "rotation":0,
-                 "type":"LevelStart",
-                 "visible":true,
-                 "width":0,
-                 "x":1500,
-                 "y":84
                 }, 
                 {
                  "height":2040,
@@ -345,8 +332,7 @@
                  "width":12,
                  "x":-1452,
                  "y":-1188
-                },
-            
+                }, 
                 {
                  "height":60,
                  "id":45,
@@ -363,7 +349,8 @@
                  "width":72,
                  "x":-600,
                  "y":720
-                }, 
+                },
+            
                 {
                  "height":12,
                  "id":47,
@@ -690,8 +677,7 @@
                  "width":24,
                  "x":1056,
                  "y":-600
-                },
-            
+                }, 
                 {
                  "height":276,
                  "id":66,
@@ -708,7 +694,8 @@
                  "width":72,
                  "x":1272,
                  "y":-156
-                }, 
+                },
+            
                 {
                  "height":24,
                  "id":67,
@@ -812,21 +799,21 @@
                  "y":-176
                 }, 
                 {
-                 "height":1056,
+                 "height":3276,
                  "id":73,
                  "name":"",
                  "properties":[
                         {
                          "name":"texture_id",
                          "type":"string",
-                         "value":"barrier"
+                         "value":"wood"
                         }],
                  "rotation":0,
                  "type":"Collider",
                  "visible":true,
                  "width":24,
                  "x":1728,
-                 "y":-1200
+                 "y":-3360
                 }, 
                 {
                  "height":0,
@@ -1080,8 +1067,7 @@
                  "width":24,
                  "x":1440,
                  "y":96
-                },
-            
+                }, 
                 {
                  "height":0,
                  "id":165,
@@ -1115,7 +1101,8 @@
                  "width":0,
                  "x":1788.028,
                  "y":54.2289999999999
-                }, 
+                },
+            
                 {
                  "height":0,
                  "id":166,
@@ -1319,29 +1306,7 @@
                  "type":"Graphics",
                  "visible":true,
                  "width":24,
-                 "x":2016,
-                 "y":96
-                }, 
-                {
-                 "height":24,
-                 "id":183,
-                 "name":"",
-                 "properties":[
-                        {
-                         "name":"action",
-                         "type":"string",
-                         "value":"ShowText"
-                        }, 
-                        {
-                         "name":"text",
-                         "type":"string",
-                         "value":"You can rocket jump off of\nwalls too."
-                        }],
-                 "rotation":0,
-                 "type":"Trigger",
-                 "visible":true,
-                 "width":24,
-                 "x":2016,
+                 "x":2100,
                  "y":96
                 }, 
                 {
@@ -1379,84 +1344,6 @@
                  "y":-1200
                 }, 
                 {
-                 "height":24,
-                 "id":192,
-                 "name":"",
-                 "properties":[
-                        {
-                         "name":"texture_id",
-                         "type":"string",
-                         "value":"question_mark"
-                        }],
-                 "rotation":0,
-                 "type":"Graphics",
-                 "visible":true,
-                 "width":24,
-                 "x":2376,
-                 "y":96
-                }, 
-                {
-                 "height":24,
-                 "id":193,
-                 "name":"",
-                 "properties":[
-                        {
-                         "name":"action",
-                         "type":"string",
-                         "value":"ShowText"
-                        }, 
-                        {
-                         "name":"text",
-                         "type":"string",
-                         "value":"Hint: unlike real rockets,\npenguin rockets don't inherit\nyour velocity."
-                        }],
-                 "rotation":0,
-                 "type":"Trigger",
-                 "visible":true,
-                 "width":24,
-                 "x":2376,
-                 "y":96
-                }, 
-                {
-                 "height":24,
-                 "id":194,
-                 "name":"",
-                 "properties":[
-                        {
-                         "name":"texture_id",
-                         "type":"string",
-                         "value":"question_mark"
-                        }],
-                 "rotation":0,
-                 "type":"Graphics",
-                 "visible":true,
-                 "width":24,
-                 "x":2424,
-                 "y":96
-                }, 
-                {
-                 "height":24,
-                 "id":195,
-                 "name":"",
-                 "properties":[
-                        {
-                         "name":"action",
-                         "type":"string",
-                         "value":"ShowText"
-                        }, 
-                        {
-                         "name":"text",
-                         "type":"string",
-                         "value":"e.g. if you shoot directly under your feet\nwhen moving right, the rocket will impact\nthe ground at a place to the left of you."
-                        }],
-                 "rotation":0,
-                 "type":"Trigger",
-                 "visible":true,
-                 "width":24,
-                 "x":2424,
-                 "y":96
-                }, 
-                {
                  "height":936,
                  "id":196,
                  "name":"",
@@ -1472,8 +1359,7 @@
                  "width":24,
                  "x":2760,
                  "y":-1176
-                },
-            
+                }, 
                 {
                  "height":600,
                  "id":197,
@@ -1679,7 +1565,8 @@
                  "width":8.03714,
                  "x":2789.87263117924,
                  "y":-1303.65003942062
-                }, 
+                },
+            
                 {
                  "height":24,
                  "id":204,
@@ -1692,28 +1579,6 @@
                         }],
                  "rotation":0,
                  "type":"Graphics",
-                 "visible":true,
-                 "width":24,
-                 "x":2760,
-                 "y":-1332
-                }, 
-                {
-                 "height":24,
-                 "id":205,
-                 "name":"",
-                 "properties":[
-                        {
-                         "name":"action",
-                         "type":"string",
-                         "value":"ShowText"
-                        }, 
-                        {
-                         "name":"text",
-                         "type":"string",
-                         "value":"you made it this high!\nthat's bananas"
-                        }],
-                 "rotation":0,
-                 "type":"Trigger",
                  "visible":true,
                  "width":24,
                  "x":2760,
@@ -1871,8 +1736,7 @@
                  "width":24,
                  "x":4080,
                  "y":-1560
-                },
-            
+                }, 
                 {
                  "height":12,
                  "id":225,
@@ -1925,106 +1789,6 @@
                  "y":-744
                 }, 
                 {
-                 "height":24,
-                 "id":228,
-                 "name":"",
-                 "properties":[
-                        {
-                         "name":"action",
-                         "type":"string",
-                         "value":"ShowText"
-                        }, 
-                        {
-                         "name":"text",
-                         "type":"string",
-                         "value":"to be continued!"
-                        }],
-                 "rotation":0,
-                 "type":"Trigger",
-                 "visible":true,
-                 "width":24,
-                 "x":4176,
-                 "y":-744
-                }, 
-                {
-                 "height":24,
-                 "id":229,
-                 "name":"",
-                 "properties":[
-                        {
-                         "name":"texture_id",
-                         "type":"string",
-                         "value":"question_mark"
-                        }],
-                 "rotation":0,
-                 "type":"Graphics",
-                 "visible":true,
-                 "width":24,
-                 "x":3720,
-                 "y":96
-                }, 
-                {
-                 "height":24,
-                 "id":230,
-                 "name":"",
-                 "properties":[
-                        {
-                         "name":"action",
-                         "type":"string",
-                         "value":"ShowText"
-                        }, 
-                        {
-                         "name":"text",
-                         "type":"string",
-                         "value":"The penguin has a \"fuel meter\"\ndisplayed on its body. When you\nare out of fuel, you cannot shoot."
-                        }],
-                 "rotation":0,
-                 "type":"Trigger",
-                 "visible":true,
-                 "width":24,
-                 "x":3720,
-                 "y":96
-                }, 
-                {
-                 "height":24,
-                 "id":231,
-                 "name":"",
-                 "properties":[
-                        {
-                         "name":"texture_id",
-                         "type":"string",
-                         "value":"question_mark"
-                        }],
-                 "rotation":0,
-                 "type":"Graphics",
-                 "visible":true,
-                 "width":24,
-                 "x":3792,
-                 "y":96
-                }, 
-                {
-                 "height":24,
-                 "id":232,
-                 "name":"",
-                 "properties":[
-                        {
-                         "name":"action",
-                         "type":"string",
-                         "value":"ShowText"
-                        }, 
-                        {
-                         "name":"text",
-                         "type":"string",
-                         "value":"Try aiming in the air and holding\nthe left mouse button to understand\nthe mechanism better."
-                        }],
-                 "rotation":0,
-                 "type":"Trigger",
-                 "visible":true,
-                 "width":24,
-                 "x":3792,
-                 "y":96
-                }, 
-                {
                  "height":58,
                  "id":233,
                  "name":"",
@@ -2059,26 +1823,90 @@
                  "y":96
                 }, 
                 {
-                 "height":24,
-                 "id":235,
+                 "height":204,
+                 "id":241,
                  "name":"",
                  "properties":[
                         {
-                         "name":"action",
+                         "name":"texture_id",
                          "type":"string",
-                         "value":"ShowText"
-                        }, 
-                        {
-                         "name":"text",
-                         "type":"string",
-                         "value":"If you can't make this jump,\nthere's a hidden hole ---->"
+                         "value":"wood_dark"
                         }],
                  "rotation":0,
-                 "type":"Trigger",
+                 "type":"Graphics",
                  "visible":true,
                  "width":24,
-                 "x":1620,
+                 "x":1728,
+                 "y":-84
+                }, 
+                {
+                 "height":24,
+                 "id":242,
+                 "name":"",
+                 "properties":[
+                        {
+                         "name":"texture_id",
+                         "type":"string",
+                         "value":"question_mark"
+                        }],
+                 "rotation":0,
+                 "type":"Graphics",
+                 "visible":true,
+                 "width":24,
+                 "x":1956,
                  "y":96
+                },
+            
+                {
+                 "height":24,
+                 "id":244,
+                 "name":"",
+                 "properties":[
+                        {
+                         "name":"texture_id",
+                         "type":"string",
+                         "value":"question_mark"
+                        }],
+                 "rotation":0,
+                 "type":"Graphics",
+                 "visible":true,
+                 "width":24,
+                 "x":1104,
+                 "y":96
+                }, 
+                {
+                 "height":24,
+                 "id":245,
+                 "name":"",
+                 "properties":[
+                        {
+                         "name":"texture_id",
+                         "type":"string",
+                         "value":"question_mark"
+                        }],
+                 "rotation":0,
+                 "type":"Graphics",
+                 "visible":true,
+                 "width":24,
+                 "x":1176,
+                 "y":96
+                }, 
+                {
+                 "height":24,
+                 "id":104,
+                 "name":"",
+                 "properties":[
+                        {
+                         "name":"texture_id",
+                         "type":"string",
+                         "value":"question_mark"
+                        }],
+                 "rotation":0,
+                 "type":"Graphics",
+                 "visible":true,
+                 "width":24,
+                 "x":-528,
+                 "y":756
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -2217,23 +2045,6 @@
                 }, 
                 {
                  "height":24,
-                 "id":104,
-                 "name":"",
-                 "properties":[
-                        {
-                         "name":"texture_id",
-                         "type":"string",
-                         "value":"question_mark"
-                        }],
-                 "rotation":0,
-                 "type":"Graphics",
-                 "visible":true,
-                 "width":24,
-                 "x":-528,
-                 "y":756
-                }, 
-                {
-                 "height":24,
                  "id":105,
                  "name":"",
                  "properties":[
@@ -2296,6 +2107,216 @@
                  "width":0,
                  "x":1776,
                  "y":120
+                }, 
+                {
+                 "height":0,
+                 "id":5,
+                 "name":"",
+                 "point":true,
+                 "rotation":0,
+                 "type":"LevelStart",
+                 "visible":true,
+                 "width":0,
+                 "x":-156,
+                 "y":84
+                }, 
+                {
+                 "height":24,
+                 "id":183,
+                 "name":"",
+                 "properties":[
+                        {
+                         "name":"action",
+                         "type":"string",
+                         "value":"ShowText"
+                        }, 
+                        {
+                         "name":"text",
+                         "type":"string",
+                         "value":"You can rocket jump off of\nwalls too."
+                        }],
+                 "rotation":0,
+                 "type":"Trigger",
+                 "visible":true,
+                 "width":24,
+                 "x":2100,
+                 "y":96
+                }, 
+                {
+                 "height":24,
+                 "id":205,
+                 "name":"",
+                 "properties":[
+                        {
+                         "name":"action",
+                         "type":"string",
+                         "value":"ShowText"
+                        }, 
+                        {
+                         "name":"text",
+                         "type":"string",
+                         "value":"you made it this high!\nthat's bananas"
+                        }],
+                 "rotation":0,
+                 "type":"Trigger",
+                 "visible":true,
+                 "width":24,
+                 "x":2760,
+                 "y":-1332
+                }, 
+                {
+                 "height":24,
+                 "id":228,
+                 "name":"",
+                 "properties":[
+                        {
+                         "name":"action",
+                         "type":"string",
+                         "value":"ShowText"
+                        }, 
+                        {
+                         "name":"text",
+                         "type":"string",
+                         "value":"to be continued!"
+                        }],
+                 "rotation":0,
+                 "type":"Trigger",
+                 "visible":true,
+                 "width":24,
+                 "x":4176,
+                 "y":-744
+                }, 
+                {
+                 "height":24,
+                 "id":235,
+                 "name":"",
+                 "properties":[
+                        {
+                         "name":"action",
+                         "type":"string",
+                         "value":"ShowText"
+                        }, 
+                        {
+                         "name":"text",
+                         "type":"string",
+                         "value":"If you can't make this jump,\nthere's a hidden hole ---->"
+                        }],
+                 "rotation":0,
+                 "type":"Trigger",
+                 "visible":true,
+                 "width":24,
+                 "x":1620,
+                 "y":96
+                }, 
+                {
+                 "height":204,
+                 "id":236,
+                 "name":"",
+                 "properties":[
+                        {
+                         "name":"action",
+                         "type":"string",
+                         "value":"SetEyepatch"
+                        }, 
+                        {
+                         "name":"enabled",
+                         "type":"bool",
+                         "value":true
+                        }],
+                 "rotation":0,
+                 "type":"Trigger",
+                 "visible":true,
+                 "width":24,
+                 "x":1728,
+                 "y":-84
+                }, 
+                {
+                 "height":120,
+                 "id":240,
+                 "name":"",
+                 "properties":[
+                        {
+                         "name":"action",
+                         "type":"string",
+                         "value":"SetEyepatch"
+                        }, 
+                        {
+                         "name":"enabled",
+                         "type":"bool",
+                         "value":false
+                        }],
+                 "rotation":0,
+                 "type":"Trigger",
+                 "visible":true,
+                 "width":24,
+                 "x":4080,
+                 "y":-840
+                }, 
+                {
+                 "height":24,
+                 "id":243,
+                 "name":"",
+                 "properties":[
+                        {
+                         "name":"action",
+                         "type":"string",
+                         "value":"ShowText"
+                        }, 
+                        {
+                         "name":"text",
+                         "type":"string",
+                         "value":"The eyepatch means that you cannot\nshoot rockets when another rocket\nis already in flight."
+                        }],
+                 "rotation":0,
+                 "type":"Trigger",
+                 "visible":true,
+                 "width":24,
+                 "x":1956,
+                 "y":96
+                }, 
+                {
+                 "height":24,
+                 "id":246,
+                 "name":"",
+                 "properties":[
+                        {
+                         "name":"action",
+                         "type":"string",
+                         "value":"ShowText"
+                        }, 
+                        {
+                         "name":"text",
+                         "type":"string",
+                         "value":"The penguin has a \"fuel meter\"\ndisplayed on its body. When you\nare out of fuel, you cannot shoot."
+                        }],
+                 "rotation":0,
+                 "type":"Trigger",
+                 "visible":true,
+                 "width":24,
+                 "x":1104,
+                 "y":96
+                }, 
+                {
+                 "height":24,
+                 "id":247,
+                 "name":"",
+                 "properties":[
+                        {
+                         "name":"action",
+                         "type":"string",
+                         "value":"ShowText"
+                        }, 
+                        {
+                         "name":"text",
+                         "type":"string",
+                         "value":"Try aiming in the air and holding\nthe left mouse button to understand\nthe mechanism better."
+                        }],
+                 "rotation":0,
+                 "type":"Trigger",
+                 "visible":true,
+                 "width":24,
+                 "x":1176,
+                 "y":96
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -2304,7 +2325,7 @@
          "y":0
         }],
  "nextlayerid":10,
- "nextobjectid":236,
+ "nextobjectid":248,
  "orientation":"orthogonal",
  "renderorder":"right-down",
  "tiledversion":"1.11.2",

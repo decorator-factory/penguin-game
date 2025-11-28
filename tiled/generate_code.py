@@ -73,6 +73,9 @@ def trigger_action_expr(obj: dict[str, Any]) -> str:
         case "ShowText":
             text = extract_property(obj, "text")
             return f"levels::TriggerKind::ShowText({json.dumps(text)})"
+        case "SetEyepatch":
+            enabled = extract_property(obj, "enabled")
+            return f"levels::TriggerKind::SetEyepatch({str(enabled).lower()})"
         case _:
             raise Exception(f"Unknown action in trigger object with id={obj['id']}")
 

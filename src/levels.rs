@@ -73,6 +73,7 @@ pub enum TriggerKind {
     Hello,
     DebugText(&'static str),
     ShowText(&'static str),
+    SetEyepatch(bool),
 }
 
 impl Level {
