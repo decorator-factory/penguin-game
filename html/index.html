@@ -71,6 +71,9 @@
                 miniquad.define_ffi_function("is_wasm_new_level", function () {
                     return document.location.hash == "#new-level";
                 });
+                miniquad.define_ffi_function("is_wasm_new_level_demo", function () {
+                    return document.location.hash == "#new-level-demo";
+                });
                 miniquad.add_panic_handler((message, backtrace) => {
                     backtraceElement.innerText = message + "\n--------\n" + backtrace;
                     errorElement.classList.add("show");

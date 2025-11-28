@@ -12,8 +12,11 @@ use parry2d::shape::ConvexPolygon;
 
 use crate::levels;
 
-const UPS_NORMAL: f64 = 240.;
-const UPS_FAST: f64 = 1200.;
+const UPS_PRESETS: &[f64] =
+    &[1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 240.0, 480.0, 1200.0, 2400.0, 12000.0, 24000.0];
+const DEFAULT_UPS_PRESET: usize = 6;
+#[allow(clippy::float_cmp)]
+const _: () = assert!(UPS_PRESETS[DEFAULT_UPS_PRESET] == 240.0, "");
 
 const PENGUIN_RADIUS: f32 = 24.0;
 const ROCKET_RADIUS: f32 = 4.0;
@@ -116,7 +119,11 @@ impl GameState {
     }
 }
 
-pub async fn run_game(device: &mut dyn crate::input::InputDevice, new_level: bool) {
+pub async fn run_game(
+    device: &mut dyn crate::input::InputDevice,
+    new_level: bool,
+    skip_until_update: u64,
+) {
     let builder = levels::LevelBuilder::new(load_textures());
     let level = if new_level {
         // this is very MVP quality...
@@ -129,28 +136,42 @@ pub async fn run_game(device: &mut dyn crate::input::InputDevice, new_level: boo
     macroquad::logging::info!("Initialized penguin-game state!");
 
     let mut time_bank: f64 = 0.0;
-    let mut last_time = get_time();
 
     let mut update_number = 0u64;
     let mut frame_number = 0u64;
-    let mut speed_up = false;
 
     let mut stats = Stats::new();
 
+    let mut ups_index: usize = if skip_until_update == 0 {
+        DEFAULT_UPS_PRESET
+    } else {
+        0 // slowest
+    };
+
+    while update_number < skip_until_update {
+        // TODO: duplication with main loop?
+        device.next_update();
+        update_number += 1;
+        updates::fixed_update(&mut state, device);
+    }
+
+    let mut last_time = get_time();
     // Handling the quit event manually allows us to save the demo recording
     prevent_quit();
     while !is_quit_requested() {
-        if is_key_pressed(KeyCode::R) {
-            speed_up = !speed_up;
+        if is_key_pressed(KeyCode::Q) && ups_index > 0 {
+            ups_index -= 1;
+        } else if is_key_pressed(KeyCode::E) && ups_index < UPS_PRESETS.len() - 1 {
+            ups_index += 1;
         }
+        let ups = if update_number < skip_until_update { 12000.0 } else { UPS_PRESETS[ups_index] };
 
         // Update debt logic
         let now = get_time();
         time_bank += now - last_time;
         last_time = now;
-        let ups = if speed_up { UPS_FAST } else { UPS_NORMAL };
         let update_time = 1.0 / ups;
-        if time_bank >= update_time * 60.0 {
+        if time_bank >= 0.5 && ups > 2.0 {
             // We "bankrupt" the time bank and assume we have 1 update left to do.
             // This can happen due to several reasons:
             // - lag spikes in other programs
@@ -298,7 +319,7 @@ mod updates {
     };
 
     const ROCKET_SPEED: f32 = 2.7;
-    const ROCKET_TTL: u16 = 300;
+    pub(super) const ROCKET_TTL: u16 = 200;
     const ROCKET_SHOOT_COOLDOWN: u16 = 40;
 
     const EXPLOSION_RADIUS: f32 = 42.0;
@@ -524,7 +545,7 @@ mod updates {
     }
 
     fn apply_penguin_triggers(state: &mut GameState) {
-        let triggers = state.level.triggers_at(state.penguin.circle());
+        let triggers = state.level.triggers_at(state.penguin.circle().offset(state.penguin.vel));
 
         for (kind, poly) in triggers {
             match kind {
@@ -639,9 +660,10 @@ mod graphics {
         state.level.macroquad_draw(rect);
         draw_tooltip(&state.tooltip, &state.penguin);
 
-        draw_penguin(&state.penguin, Vec2::from_angle(look_angle));
+        draw_penguin(&state.penguin, Vec2::from_angle(look_angle), !state.rockets.is_empty());
         for &rocket in &state.rockets {
-            draw_rocket(rocket.pos, rocket.vel);
+            let factor = f32::from(rocket.ttl) / f32::from(super::updates::ROCKET_TTL);
+            draw_rocket(rocket.pos, rocket.vel, factor);
         }
         for &explosion in &state.explosions {
             draw_explosion(explosion);
@@ -710,7 +732,7 @@ mod graphics {
         Camera2D::from_display_rect(Rect { x: offset.x.round(), y: offset.y.round() + h, w, h: -h })
     }
 
-    fn draw_rocket(pos: Vec2, vel: Vec2) {
+    fn draw_rocket(pos: Vec2, vel: Vec2, ttl_frac: f32) {
         let dir = vel.normalize_or_zero();
 
         draw_triangle(
@@ -725,7 +747,9 @@ mod graphics {
             pos - dir.perp() * 2.,
             WHITE,
         );
-        draw_circle(pos.x, pos.y, ROCKET_RADIUS, BLACK);
+
+        let bulb_bolor = Color::new(1.0 - ttl_frac, 1.0 - ttl_frac, 1.0 - ttl_frac, 1.0);
+        draw_circle(pos.x, pos.y, ROCKET_RADIUS, bulb_bolor);
     }
 
     fn draw_explosion(Explosion { pos, radius, ttl, initial_ttl, .. }: Explosion) {
@@ -737,7 +761,7 @@ mod graphics {
     const PENGUINGRAY_EMPTY: Color = Color::new(0.3, 0.3, 0.4, 1.0);
     const DARKRED: Color = Color::new(0.7, 0.0, 0.2, 1.0);
 
-    fn draw_penguin(penguin: &Penguin, eyes_dir: Vec2) {
+    fn draw_penguin(penguin: &Penguin, eyes_dir: Vec2, any_rockets: bool) {
         const RAD: f32 = PENGUIN_RADIUS;
         let Penguin { pos, vel, fuel, has_eyepatch, status, status_ttl, .. } = penguin;
 
@@ -768,20 +792,22 @@ mod graphics {
         draw_ellipse(cx, cy + RAD * 0.4, RAD * 0.65, RAD * 0.4, 0.0, LIGHTGRAY);
         draw_rectangle(cx - RAD * 0.6, cy - RAD * 0.2, RAD * 1.2, RAD * 0.4, PENGUINGRAY);
 
+        // All about eyes:
         {
-            let [look_x, look_y] = (eyes_dir * 2.5).to_array();
+            let look = eyes_dir * 2.5;
             let [vx, vy] = (vel.clamp_length_max(16.0) * 0.0125 * RAD).round().to_array();
 
             draw_circle(cx - RAD * 0.3 - vx, cy - RAD * 0.2 - vy, 5., WHITE);
-            draw_circle(cx - RAD * 0.3 - vx + look_x, cy - RAD * 0.2 + look_y - vy, 2., BLACK);
+            draw_circle(cx - RAD * 0.3 - vx + look.x, cy - RAD * 0.2 + look.y - vy, 2., BLACK);
             if *has_eyepatch {
+                let color = if any_rockets { RED } else { DARKRED };
                 let [px, py] = vec2(cx + RAD * 0.3 - vx, cy - RAD * 0.2 - vy).to_array();
-                draw_circle(px, py, 6., DARKRED);
-                draw_line(px, py, px - RAD * 0.7, py - RAD * 0.7, 5.0, DARKRED);
-                draw_line(px, py, px + RAD * 0.7, py + RAD * 0.3, 5.0, DARKRED);
+                draw_circle(px, py, 6., color);
+                draw_line(px, py, px - RAD * 0.7, py - RAD * 0.7, 5.0, color);
+                draw_line(px, py, px + RAD * 0.7, py + RAD * 0.3, 5.0, color);
             } else {
                 draw_circle(cx + RAD * 0.3 - vx, cy - RAD * 0.2 - vy, 5., WHITE);
-                draw_circle(cx + RAD * 0.3 - vx + look_x, cy - RAD * 0.2 + look_y - vy, 2., BLACK);
+                draw_circle(cx + RAD * 0.3 - vx + look.x, cy - RAD * 0.2 + look.y - vy, 2., BLACK);
             }
         }
 
@@ -866,14 +892,18 @@ fn load_textures() -> HashMap<&'static str, Texture2D> {
     HashMap::from([
         ("arrow_left", include_texture(include_with_name!("./assets/arrow_left.png"), true)),
         ("barrier", include_texture(include_with_name!("./assets/barrier.png"), true)),
+        ("barrier_eyepatch", include_texture(include_with_name!("./assets/barrier_eyepatch.png"), true)),
+        ("barrier_no_eyepatch", include_texture(include_with_name!("./assets/barrier_no_eyepatch.png"), true)),
         ("barrier_danger", include_texture(include_with_name!("./assets/barrier_danger.png"), true)),
         ("barrier_move", include_texture(include_with_name!("./assets/barrier_move.png"), true)),
         ("bricks", include_texture(include_with_name!("./assets/bricks.png"), true)),
         ("bricks_dark", include_texture(include_with_name!("./assets/bricks_dark.png"), true)),
         ("caution", include_texture(include_with_name!("./assets/caution.png"), true)),
+        ("water", include_texture(include_with_name!("./assets/water.png"), true)),
         ("wood", include_texture(include_with_name!("./assets/wood.png"), true)),
         ("wood_dark", include_texture(include_with_name!("./assets/wood_dark.png"), true)),
 
+        ("crocodile4", include_texture(include_with_name!("./assets/crocodile4.png"), false)),
         ("question_mark", include_texture(include_with_name!("./assets/question_mark.png"), false)),
     ])
 }

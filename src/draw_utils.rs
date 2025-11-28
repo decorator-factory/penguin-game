@@ -46,11 +46,12 @@ pub fn draw_textured_rect(pos: Vec2, wh: Vec2, opts: &DrawOpts) {
             Vertex::new(point.x, point.y, 0., u, v, *color)
         })
     } else {
+        let [u, v] = (wh / texture.size()).to_array();
         [
             Vertex::new(pos.x,        pos.y,        0.0, 0.0, 0.0, *color),
-            Vertex::new(pos.x + wh.x, pos.y,        0.0, 1.0, 0.0, *color),
-            Vertex::new(pos.x + wh.x, pos.y + wh.y, 0.0, 1.0, 1.0, *color),
-            Vertex::new(pos.x,        pos.y + wh.y, 0.0, 0.0, 1.0, *color),
+            Vertex::new(pos.x + wh.x, pos.y,        0.0, u,   0.0, *color),
+            Vertex::new(pos.x + wh.x, pos.y + wh.y, 0.0, u,   v,   *color),
+            Vertex::new(pos.x,        pos.y + wh.y, 0.0, 0.0, v,   *color),
         ]
     };
 
@@ -129,7 +130,6 @@ pub fn draw_arrow(start: Vec2, end: Vec2, color: Color) {
     draw_triangle(v1, v2, v3, color);
 }
 
-/// TODO: handle partially transparent colors
 #[rustfmt::skip]
 pub fn draw_rounded_rect(pos: Vec2, wh: Vec2, r: f32, color: Color) {
     // AxxxxB

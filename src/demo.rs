@@ -144,10 +144,10 @@ impl<D: InputDevice> DemoRecorder<D> {
 
         if self.wrapped.is_input_down(Input::Shoot) {
             if self.shot_cooldown == 0 {
-                if (self.last_recorded_look - look_radians).abs() > 0.001 {
+                if (self.last_recorded_look - look_radians).abs() > 0.0001 {
                     record_look_degrees = Some(look_radians.to_degrees());
-                    self.shot_cooldown = 10; // TODO: this is not a good solution
-                    self.look_cooldown = 30;
+                    self.shot_cooldown = 5; // TODO: this is not a good solution. We need "rocket is shot" events and such
+                    self.look_cooldown = 20;
                 }
             } else {
                 self.shot_cooldown -= 1;
@@ -157,10 +157,9 @@ impl<D: InputDevice> DemoRecorder<D> {
         }
 
         if self.look_cooldown == 0 {
-            if (look_radians - self.last_recorded_look).abs() > 0.01 {
-                let deg = (look_radians.to_degrees() * 10.0).round() / 10.0;
-                record_look_degrees = Some(deg);
-                self.look_cooldown = 30;
+            if (look_radians - self.last_recorded_look).abs() > 0.0001 {
+                record_look_degrees = Some(look_radians.to_degrees());
+                self.look_cooldown = 20;
             }
         } else {
             self.look_cooldown -= 1;
@@ -452,10 +451,16 @@ fn try_parse_input(line: &[u8]) -> Option<(&[u8], Input)> {
 //-----
 
 static DEFAULT_DEMO_SOURCE: &[u8] = include_bytes!("../demos/intended.demo");
+static NEW_LEVEL_DEMO_SOURCE: &[u8] = include_bytes!("../demos/new_level.demo");
 
 pub fn make_default_demo_movie() -> DemoMovie {
     parse_movie(DEFAULT_DEMO_SOURCE)
         .unwrap_or_else(|e| panic!("the demo movie in '../demos/intended.demo' is malformed: {e}"))
+}
+
+pub fn make_new_level_demo_movie() -> DemoMovie {
+    parse_movie(NEW_LEVEL_DEMO_SOURCE)
+        .unwrap_or_else(|e| panic!("the demo movie in '../demos/new_level.demo' is malformed: {e}"))
 }
 
 //-----

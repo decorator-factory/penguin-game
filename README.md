@@ -5,14 +5,16 @@ In this game, you control a penguin. Being a penguin, you cannot fly or jump. Ho
 This game is in very early development, but you can test it out in the browser:
 
 - URL: https://decorator-factory.github.io/penguin-game/
-
 - Demo URL: https://decorator-factory.github.io/penguin-game/#demo (the penguin will move on its own)
 
-- In-development level (WIP): https://decorator-factory.github.io/penguin-game/#new-level
-
-The available content is very short, intended to show the gist of the game. Your goal is to get to the platform inside the tower roof.
+The goal is to get to the platform inside the tower roof.
 
 ![Penguin inside tower roof](screenshot.png)
+
+That level is so lame though. Check out this new level. It has crocodiles in it so it might be scary.
+
+- In-development level (WIP): https://decorator-factory.github.io/penguin-game/#new-level
+- In-development level Demo: https://decorator-factory.github.io/penguin-game/#new-level-demo
 
 ## Controls
 
@@ -24,17 +26,10 @@ The rules are simple: shoot a rocket under your feet, and the explosion blasts y
 - Left mouse button: shoot rocket
 
 Debug controls:
-- `R`: speed up the game 5 times (for debugging and demo development purposes)
+- `Q`/`E`: slow down or speed up the game. You can see the `target UPS` label in the top left to find out the current UPS.
+    The game is intended to be played at 240 ticks per second, but for examining demo 
 
 If you get stuck, see how the demo penguin completes the level.
-
-## Building for desktop
-
-1. Install Rust 1.90.0 or later and Cargo
-2. Clone this repository, run `cargo build` in the repository directory
-3. The resulting executable is now in `./target/debug/penguin-game`
-
-If you want to build a faster release executable, run `cargo build --release` and look for the binary in `./target/release/penguin-game`
 
 ## Command-Line Interface (when running on desktop)
 
@@ -43,7 +38,7 @@ penguin-game
 
 Usage:
     penguin-game play [--new-level]
-    penguin-game demo [--input-file <path>]
+    penguin-game demo [--input-file <path>] [--skip-until-update <upd>]
     penguin-game record-demo --output-file <path>
     penguin-game keep-recording-demo --input-file <path> --output-file <path>
     penguin-game re-record-demo --input-file <path> --output-file <path>
@@ -85,6 +80,8 @@ Usage:
 - Sounds
 
 ## Development
+
+You need Rust 1.90.0 or later and Cargo.
 
 1. `cargo build`
 1. `cargo test`

@@ -4,7 +4,7 @@ Requires Python 3.12 or later. No other dependencies.
 NB: in Python's "type annotation" system, `float` means `int | float`. Annoying.
 
 NB2: polygon colliders are supposed to be convex for now, but we never check for that.
-     if a polygon collider
+     if a polygon collider is concave, its convex hull is taken instead.
 """
 
 import json
@@ -26,14 +26,11 @@ level_path = Path(sys.argv[1])
 with open(level_path, "rb") as file:
     level = json.load(file)
 
-layers = [
-    layer for layer in level["layers"] if layer["name"] in ("Objects", "Triggers")
-]
+layers = level["layers"]
 if not layers:
-    sys.stderr.write("error: Must have at least 'Objects' or 'Triggers' layer\n")
-    sys.exit(1)
+    raise Exception("Must have at least one layer")
 
-all_objects = [obj for layer in layers for obj in layer["objects"]]
+all_objects = [obj for layer in layers[::-1] for obj in layer["objects"]]
 
 TEMPLATE = """
 #![allow(clippy::excessive_precision, clippy::pedantic)]
@@ -159,10 +156,24 @@ def render_obj(obj: dict[str, Any]) -> Iterator[str]:
 
         case {"x": x, "y": y, "width": w, "height": h, "rotation": deg} if abs(deg) > 0.001:
             # game only supports axis-aligned rects, so a rotated rect will be a polygon
-            yield from render_obj({
-                **obj,
-                "polygon": [{"x": w*u, "y": h*v} for (u, v) in [(0, 0), (1, 0), (1, 1), (0,1)]],
-            })
+            if deg % 90 == 0:
+                # I'm starting to think I'm abusing Tiled beyond its original design...
+                if deg == 90:
+                    x -= h
+                    w, h = h, w
+                elif deg == 180:
+                    x -= w
+                    y -= h
+                else:
+                    assert deg == 270, "math is not real"
+                    y -= w
+                    w, h = h, w
+                yield from render_obj({**obj, "x": x, "y": y, "width": w, "height": h, "rotation": 0})
+            else:
+                yield from render_obj({
+                    **obj,
+                    "polygon": [{"x": w*u, "y": h*v} for (u, v) in [(0, 0), (1, 0), (1, 1), (0,1)]],
+                })
 
         case {"x": x, "y": y, "width": w, "height": h, "type": "Collider"}:
             texture = maybe_texture_expr(obj)

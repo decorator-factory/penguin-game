@@ -39,7 +39,7 @@ fn main() {
 
 enum RunArgs {
     JustPlay { new_level: bool },
-    PlayDemo { in_movie: demo::DemoMovie },
+    PlayDemo { in_movie: demo::DemoMovie, skip_until_update: u64, new_level: bool },
     RecordDemo { output_file: File, output_path: PathBuf },
     ReRecordDemo { in_movie: demo::DemoMovie, output_file: File, output_path: PathBuf },
     KeepRecordingDemo { in_movie: demo::DemoMovie, output_file: File, output_path: PathBuf },
@@ -49,12 +49,12 @@ impl RunArgs {
     fn from_cli_args(args: cli::Args) -> Result<RunArgs, String> {
         match args {
             cli::Args::JustPlay { new_level } => Ok(RunArgs::JustPlay { new_level }),
-            cli::Args::PlayDemo { input_path } => {
+            cli::Args::PlayDemo { input_path, skip_until_update } => {
                 let in_movie = match input_path {
                     Some(path) => try_read_demo_movie(&path)?,
                     None => demo::make_default_demo_movie(),
                 };
-                Ok(RunArgs::PlayDemo { in_movie })
+                Ok(RunArgs::PlayDemo { in_movie, skip_until_update, new_level: false })
             }
             cli::Args::RecordDemo { output_path } => {
                 let output_file = try_create_exclusive_file(&output_path)?;
@@ -69,6 +69,10 @@ impl RunArgs {
                 let in_movie = try_read_demo_movie(&input_path)?;
                 let output_file = try_create_exclusive_file(&output_path)?;
                 Ok(RunArgs::KeepRecordingDemo { in_movie, output_file, output_path })
+            }
+            cli::Args::PlayNewLevelDemo => {
+                let in_movie = demo::make_new_level_demo_movie();
+                Ok(RunArgs::PlayDemo { in_movie, skip_until_update: 0, new_level: true })
             }
         }
     }
@@ -94,17 +98,19 @@ fn try_create_exclusive_file(output_path: &std::path::Path) -> Result<File, Stri
 async fn amain(args: RunArgs) {
     fix_panic_handling();
 
+    // TODO: fix all this duplicated mess and add a more composed way of launching the game.
+
     match args {
         RunArgs::JustPlay { new_level } => {
-            game::run_game(&mut input::MacroquadInput, new_level).await;
+            game::run_game(&mut input::MacroquadInput, new_level, 0).await;
         }
-        RunArgs::PlayDemo { in_movie } => {
+        RunArgs::PlayDemo { in_movie, skip_until_update, new_level } => {
             let mut device = demo::DemoPlayback::new(in_movie);
-            game::run_game(&mut device, false).await;
+            game::run_game(&mut device, new_level, skip_until_update).await;
         }
         RunArgs::RecordDemo { mut output_file, output_path } => {
             let mut device = demo::DemoRecorder::new(input::MacroquadInput, 0);
-            game::run_game(&mut device, false).await;
+            game::run_game(&mut device, false, 0).await;
             let movie = device.collect_recording();
 
             if let Err(e) = demo::unparse_movie(&movie, &mut output_file) {
@@ -117,7 +123,7 @@ async fn amain(args: RunArgs) {
         }
         RunArgs::ReRecordDemo { in_movie, mut output_file, output_path } => {
             let mut device = demo::DemoRecorder::new(demo::DemoPlayback::new(in_movie), 0);
-            game::run_game(&mut device, false).await;
+            game::run_game(&mut device, false, 0).await;
             let output_movie = device.collect_recording();
 
             if let Err(e) = demo::unparse_movie(&output_movie, &mut output_file) {
@@ -136,7 +142,7 @@ async fn amain(args: RunArgs) {
                 let names = (Cow::Borrowed("playback"), Cow::Borrowed("recording"));
                 input::ComposedInput::new(playback, recorder, threshold_upd, names)
             };
-            game::run_game(&mut device, false).await;
+            game::run_game(&mut device, false, 0).await;
             let output_movie = device.into_inner().1.collect_recording();
 
             if let Err(e) = demo::unparse_movie(&output_movie, &mut output_file) {
@@ -186,11 +192,12 @@ mod cli {
         builder::ValueParser,
     };
 
-    #[cfg_attr(target_family = "wasm", allow(dead_code))]
+    #[allow(dead_code)]
     #[derive(Debug)]
     pub enum Args {
         JustPlay { new_level: bool },
-        PlayDemo { input_path: Option<PathBuf> },
+        PlayDemo { input_path: Option<PathBuf>, skip_until_update: u64 },
+        PlayNewLevelDemo, // wasm only -- honestly it's all one big hack
         RecordDemo { output_path: PathBuf },
         ReRecordDemo { input_path: PathBuf, output_path: PathBuf },
         KeepRecordingDemo { input_path: PathBuf, output_path: PathBuf },
@@ -198,6 +205,8 @@ mod cli {
 
     #[cfg(not(target_family = "wasm"))]
     pub fn parse_args_or_die() -> Args {
+        use clap::value_parser;
+
         let output_file_arg = || {
             Arg::new("output_file")
                 .short('o')
@@ -232,7 +241,15 @@ mod cli {
             .subcommand(
                 Command::new("demo")
                     .about("Play back a demo movie")
-                    .arg(input_file_arg().required(false)),
+                    .arg(input_file_arg().required(false))
+                    .arg(
+                        Arg::new("skip_until_update")
+                            .long("skip-until-update")
+                            .help("if present, run movie very fast until this update number and then resume at UPS=1")
+                            .short('u')
+                            .value_parser(value_parser!(u64))
+                            .default_value("0"),
+                    ),
             )
             .subcommand(
                 Command::new("record-demo")
@@ -261,7 +278,10 @@ mod cli {
 
         match matches.subcommand().unwrap() {
             ("play", args) => Args::JustPlay { new_level: *args.get_one("new_level").unwrap() },
-            ("demo", args) => Args::PlayDemo { input_path: args.get_one("input_file").cloned() },
+            ("demo", args) => Args::PlayDemo {
+                input_path: args.get_one("input_file").cloned(),
+                skip_until_update: *args.get_one("skip_until_update").unwrap(),
+            },
             ("record-demo", args) => Args::RecordDemo {
                 output_path: args.get_one::<PathBuf>("output_file").unwrap().clone(),
             },
@@ -280,7 +300,9 @@ mod cli {
     #[cfg(target_family = "wasm")]
     pub fn parse_args_or_die() -> Args {
         if crate::wasm::is_wasm_demo() {
-            Args::PlayDemo { input_path: None }
+            Args::PlayDemo { input_path: None, skip_until_update: 0 }
+        } else if crate::wasm::is_wasm_new_level_demo() {
+            Args::PlayNewLevelDemo
         } else {
             Args::JustPlay { new_level: crate::wasm::is_wasm_new_level() }
         }

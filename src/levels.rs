@@ -172,12 +172,10 @@ impl LevelBuilder {
     }
 
     pub fn polygon(&mut self, texture: Option<&'static str>, points: &[Vec2]) {
-        // TODO: skip drawing stuff when texture is None
         self.polygons.push((points.to_vec(), texture));
     }
 
     pub fn rect(&mut self, texture: Option<&'static str>, xy: Vec2, wh: Vec2) {
-        // TODO: skip drawing stuff when texture is None
         self.rects.push((xy, wh, texture));
     }
 
