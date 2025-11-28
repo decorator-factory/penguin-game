@@ -74,6 +74,18 @@
                 "object",
                 "project"
             ]
+        },
+        {
+            "color": "#ff91ee18",
+            "drawFill": true,
+            "id": 7,
+            "members": [
+            ],
+            "name": "Location",
+            "type": "class",
+            "useAs": [
+                "object"
+            ]
         }
     ]
 }

@@ -26,6 +26,10 @@ const TOOLTIP_TTL_GROW_RATE: u16 = 6;
 const TOOLTIP_TTL_FADE_BEGIN: u16 = 240;
 const _: () = assert!(TOOLTIP_TTL_FADE_BEGIN < TOOLTIP_TTL_MAX, "");
 
+const STATUS_TTL_MAX: u16 = 360;
+const STATUS_TTL_FADE_BEGIN: u16 = 180;
+const _: () = assert!(STATUS_TTL_FADE_BEGIN < STATUS_TTL_MAX, "");
+
 #[derive(Clone, Debug)]
 struct Penguin {
     pos: Vec2,
@@ -34,6 +38,8 @@ struct Penguin {
     fuel: u16,
     is_grounded: bool,
     has_eyepatch: bool,
+    status: levels::StatusIcon,
+    status_ttl: u16,
 }
 
 impl Penguin {
@@ -95,6 +101,8 @@ impl GameState {
             fuel: FUEL_MAX,
             rocket_cooldown: 0,
             has_eyepatch: false,
+            status: levels::StatusIcon::Wrong,
+            status_ttl: 0,
         };
 
         GameState {
@@ -267,6 +275,7 @@ mod updates {
         game::{
             FUEL_MAX,
             FUEL_ROCKET_COST,
+            STATUS_TTL_MAX,
             TOOLTIP_TTL_GROW_RATE,
             TOOLTIP_TTL_MAX,
             circle_impacts_rect,
@@ -319,6 +328,7 @@ mod updates {
 
     fn update_ui(state: &mut GameState) {
         state.tooltip.ttl = state.tooltip.ttl.saturating_sub(1);
+        state.penguin.status_ttl = state.penguin.status_ttl.saturating_sub(1);
     }
 
     fn update_shooting(state: &mut GameState, device: &dyn InputDevice) {
@@ -541,6 +551,12 @@ mod updates {
                 crate::levels::TriggerKind::SetEyepatch(yes) => {
                     state.penguin.has_eyepatch = yes;
                 }
+                crate::levels::TriggerKind::Goto(new_pos, status_icon) => {
+                    state.penguin.pos = new_pos;
+                    state.penguin.vel = vec2(0.0, 0.0);
+                    state.penguin.status = status_icon;
+                    state.penguin.status_ttl = STATUS_TTL_MAX;
+                }
             }
         }
     }
@@ -600,10 +616,12 @@ mod graphics {
         },
         game::{
             Penguin,
+            STATUS_TTL_FADE_BEGIN,
             TOOLTIP_TTL_FADE_BEGIN,
             Tooltip,
             circle_impacts_rect,
         },
+        levels::StatusIcon,
     };
     use macroquad::prelude::*;
 
@@ -637,11 +655,8 @@ mod graphics {
         if tooltip.ttl == 0 {
             return;
         }
-        let alpha = if tooltip.ttl < TOOLTIP_TTL_FADE_BEGIN {
-            f32::from(tooltip.ttl) / f32::from(TOOLTIP_TTL_FADE_BEGIN)
-        } else {
-            1.0
-        };
+        let alpha =
+            f32::from(tooltip.ttl.min(TOOLTIP_TTL_FADE_BEGIN)) / f32::from(TOOLTIP_TTL_FADE_BEGIN);
 
         let default_anchor = tooltip.origin - vec2(0.0, 4.0);
 
@@ -724,7 +739,7 @@ mod graphics {
 
     fn draw_penguin(penguin: &Penguin, eyes_dir: Vec2) {
         const RAD: f32 = PENGUIN_RADIUS;
-        let Penguin { pos, vel, fuel, has_eyepatch, .. } = penguin;
+        let Penguin { pos, vel, fuel, has_eyepatch, status, status_ttl, .. } = penguin;
 
         let (cx, cy) = (pos.x, pos.y);
         let fill_fraction = f32::from(*fuel) / f32::from(super::FUEL_MAX);
@@ -770,12 +785,43 @@ mod graphics {
             }
         }
 
+        draw_status_icon(*pos - vec2(0.0, RAD + 5.0), *status_ttl, *status);
+
         draw_triangle(
             vec2(cx - RAD / 2.5, cy + RAD * 0.15),
             vec2(cx + RAD / 2.5, cy + RAD * 0.15),
             vec2(cx, cy + RAD * 0.5),
             ORANGE,
         );
+    }
+
+    fn draw_status_icon(pos: Vec2, ttl: u16, icon: StatusIcon) {
+        if ttl == 0 {
+            return;
+        }
+
+        let alpha = f32::from(ttl.min(STATUS_TTL_FADE_BEGIN)) / f32::from(STATUS_TTL_FADE_BEGIN);
+
+        match icon {
+            StatusIcon::Wrong => {
+                let color = RED.with_alpha(alpha);
+                draw_triangle_lines(
+                    pos - vec2(10.0, 0.0),
+                    pos + vec2(10.0, 0.0),
+                    pos - vec2(0.0, 18.0),
+                    2.0,
+                    color,
+                );
+                draw_line(pos.x, pos.y - 13.0, pos.x, pos.y - 6.0, 2.0, color);
+                draw_circle(pos.x, pos.y - 3.0, 2.0, color);
+            }
+            StatusIcon::Nice => {
+                let color = LIME.with_alpha(alpha);
+                draw_line(pos.x, pos.y, pos.x - 6.0, pos.y - 6.0, 4.0, color);
+                draw_line(pos.x, pos.y, pos.x + 10.0, pos.y - 10.0, 4.0, color);
+                draw_circle(pos.x, pos.y, 2.0, color);
+            }
+        }
     }
 }
 
@@ -820,6 +866,8 @@ fn load_textures() -> HashMap<&'static str, Texture2D> {
     HashMap::from([
         ("arrow_left", include_texture(include_with_name!("./assets/arrow_left.png"), true)),
         ("barrier", include_texture(include_with_name!("./assets/barrier.png"), true)),
+        ("barrier_danger", include_texture(include_with_name!("./assets/barrier_danger.png"), true)),
+        ("barrier_move", include_texture(include_with_name!("./assets/barrier_move.png"), true)),
         ("bricks", include_texture(include_with_name!("./assets/bricks.png"), true)),
         ("bricks_dark", include_texture(include_with_name!("./assets/bricks_dark.png"), true)),
         ("caution", include_texture(include_with_name!("./assets/caution.png"), true)),

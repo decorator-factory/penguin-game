@@ -74,6 +74,14 @@ pub enum TriggerKind {
     DebugText(&'static str),
     ShowText(&'static str),
     SetEyepatch(bool),
+    Goto(Vec2, StatusIcon),
+}
+
+#[derive(Copy, Clone, Debug)]
+#[allow(dead_code)]
+pub enum StatusIcon {
+    Wrong,
+    Nice,
 }
 
 impl Level {
