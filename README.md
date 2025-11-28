@@ -8,7 +8,7 @@ This game is in very early development, but you can test it out in the browser:
 
 - Demo URL: https://decorator-factory.github.io/penguin-game/#demo (the penguin will move on its own)
 
-- In-development level (WIP): https://decorator-factory.github.io/penguin-game/#new-level (the penguin will move on its own)
+- In-development level (WIP): https://decorator-factory.github.io/penguin-game/#new-level
 
 The available content is very short, intended to show the gist of the game. Your goal is to get to the platform inside the tower roof.
 
@@ -75,10 +75,6 @@ Usage:
     it exists for re-encoding existing demos in a new format.
 
 ## TODO list
-
-- Improve collision physics, especially with polygons. I will probably end up using `rapier`, but who knows.
-
-- Level editor. Unfortunately none of the existing open-source level editors are any good for this game.
 
 - Some sort of UI for selecting levels and congratulating the player when they win
 
