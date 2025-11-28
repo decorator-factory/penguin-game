@@ -158,6 +158,24 @@ pub fn draw_quarter_circle(corner: Vec2, r: f32, rotate: f32, opts: &DrawOpts) {
     draw_textured_poly(&points, opts);
 }
 
+pub fn measure_multiline_text(text: &str, font_size: u16) -> TextDimensions {
+    let text = text.trim_ascii();
+    let mut acc = vec2(0.0, 0.0);
+
+    let mut line_dimensions =
+        text.lines().map(|line| measure_text(line, None, font_size, 1.0)).peekable();
+
+    let offset_y = line_dimensions.peek().map_or(0.0, |dim| dim.offset_y);
+
+    let mut last_hang = 0.0;
+    for dim in line_dimensions {
+        acc.x = acc.x.max(dim.width);
+        acc.y += f32::from(font_size);
+        last_hang = dim.height - dim.offset_y;
+    }
+    TextDimensions { width: acc.x, height: acc.y + last_hang.max(0.0), offset_y }
+}
+
 fn is_texture_repeating(backend: &dyn RenderingBackend, texture: &Texture2D) -> bool {
     let id = texture.raw_miniquad_id();
     matches!(backend.texture_params(id).wrap, TextureWrap::Repeat)

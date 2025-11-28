@@ -9,7 +9,9 @@ NB2: polygon colliders are supposed to be convex for now, but we never check for
 
 import json
 import sys
+from collections.abc import Iterator
 from datetime import UTC, datetime
+from math import cos, radians, sin
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +26,9 @@ level_path = Path(sys.argv[1])
 with open(level_path, "rb") as file:
     level = json.load(file)
 
-layers = [layer for layer in level["layers"] if layer["name"] in ("Objects", "Triggers")]
+layers = [
+    layer for layer in level["layers"] if layer["name"] in ("Objects", "Triggers")
+]
 if not layers:
     sys.stderr.write("error: Must have at least 'Objects' or 'Triggers' layer\n")
     sys.exit(1)
@@ -52,7 +56,9 @@ def extract_property(obj: dict[str, Any], name: str) -> Any:
     for prop in obj.get("properties", []):
         if prop["name"] == name:
             return prop.get("value")
-    raise Exception(f"Expected property {name!r} not found in object with id={obj["id"]}")
+    raise Exception(
+        f"Expected property {name!r} not found in object with id={obj['id']}"
+    )
 
 
 def trigger_action_expr(obj: dict[str, Any]) -> str:
@@ -68,9 +74,7 @@ def trigger_action_expr(obj: dict[str, Any]) -> str:
             text = extract_property(obj, "text")
             return f"levels::TriggerKind::ShowText({json.dumps(text)})"
         case _:
-            raise Exception(
-                f"Unknown action in trigger object with id={obj['id']}"
-            )
+            raise Exception(f"Unknown action in trigger object with id={obj['id']}")
 
 
 def maybe_texture_expr(obj: dict[str, Any]) -> str:
@@ -96,65 +100,80 @@ def texture_expr(obj: dict[str, Any]) -> str:
     return f'"{value}"'
 
 
-def polygon_to_expr(obj: list[dict[str, Any]], x: float, y: float) -> str:
-    points = [vec_expr(x + p["x"], y + p["y"]) for p in obj]
+def _rotate_around_origin(x: float, y: float, rad: float) -> tuple[float, float]:
+    return (x * cos(rad) - y * sin(rad), y * cos(rad) + x * sin(rad))
+
+
+def polygon_to_expr(
+    obj: list[dict[str, Any]], rotation: float, cx: float, cy: float
+) -> str:
+    points = ((p["x"], p["y"]) for p in obj)
+    points = (_rotate_around_origin(x, y, rotation) for x, y in points)
+    points = [vec_expr(x + cx, y + cy) for x, y in points]
     return "&[" + ", ".join(points) + "]"
 
 
 lines: list[str] = []
 level_start: str | None = None
 
+
+def render_obj(obj: dict[str, Any]) -> Iterator[str]:
+    match obj:
+        case {"ellipse": True}:
+            raise NotImplementedError("Ellipses are not supported yet")
+
+        case {"text": _}:
+            raise NotImplementedError("Text is not supported yet")
+
+        case {"polygon": polygon, "x": x, "y": y, "rotation": deg, "type": "Collider"}:
+            texture = maybe_texture_expr(obj)
+            points = polygon_to_expr(polygon, radians(deg), x, y)
+            yield f"builder.polygon({texture}, {points});"
+
+        case {"polygon": polygon, "x": x, "y": y, "rotation": deg, "type": "Trigger"}:
+            action = trigger_action_expr(obj)
+            points = polygon_to_expr(polygon, radians(deg), x, y)
+            yield f"builder.polygon_trigger({action}, {points});"
+
+        case {"polygon": polygon, "x": x, "y": y, "rotation": deg, "type": "Graphics"}:
+            texture = texture_expr(obj)
+            points = polygon_to_expr(polygon, radians(deg), x, y)
+            yield f"builder.polygon_graphics({texture}, {points});"
+
+        case {"x": x, "y": y, "width": w, "height": h, "rotation": deg} if abs(deg) > 0.001:
+            # game only supports axis-aligned rects, so a rotated rect will be a polygon
+            yield from render_obj({
+                **obj,
+                "polygon": [{"x": w*u, "y": h*v} for (u, v) in [(0, 0), (1, 0), (1, 1), (0,1)]],
+            })
+
+        case {"x": x, "y": y, "width": w, "height": h, "type": "Collider"}:
+            texture = maybe_texture_expr(obj)
+            yield f"builder.rect({texture}, {vec_expr(x, y)}, {vec_expr(w, h)});"
+
+        case {"x": x, "y": y, "width": w, "height": h, "type": "Graphics"}:
+            texture = texture_expr(obj)
+            yield f"builder.rect_graphics({texture}, {vec_expr(x, y)}, {vec_expr(w, h)});"
+
+        case {"x": x, "y": y, "width": w, "height": h, "type": "Trigger"}:
+            action = trigger_action_expr(obj)
+            yield f"builder.rect_trigger({action}, {vec_expr(x, y)}, {vec_expr(w, h)});"
+
+        case _:
+            raise Exception(f"Unknown object type with ID {obj.get('id')}")
+
+
 for obj in all_objects:
     # Beware: Tiled exports are kinda cursed. For example, polygons have `x` and `y`
     # fields (which represent an offset) as well as `width` and `height` (which to my
     # knowledge don't represent anything and just chill out there).
-    match obj:
-        case {"polygon": polygon, "x": x, "y": y, "type": "Collider"}:
-            texture = maybe_texture_expr(obj)
-            points = polygon_to_expr(polygon, x, y)
-            lines.append(f"builder.polygon({texture}, {points});")
+    if obj.get("type") == "LevelStart":
+        if level_start is not None:
+            raise Exception("Duplicate LevelStart object")
+        level_start = vec_expr(obj["x"], obj["y"])
+    else:
+        lines.extend(line + f" // id={obj['id']}" for line in render_obj(obj))
 
-        case {"polygon": polygon, "x": x, "y": y, "type": "Graphics"}:
-            texture = texture_expr(obj)
-            points = polygon_to_expr(polygon, x, y)
-            lines.append(f"builder.polygon_graphics({texture}, {points});")
-
-        case {"x": _, "y": _, "width": _, "height": _, "ellipse": True}:
-            raise NotImplementedError("Ellipses are not supported yet")
-
-        case {"x": _, "y": _, "width": _, "height": _, "text": _}:
-            raise NotImplementedError("Text is not supported yet")
-
-        case {"x": x, "y": y, "width": w, "height": h, "type": "Collider"}:
-            texture = maybe_texture_expr(obj)
-            lines.append(f"builder.rect({texture}, {vec_expr(x, y)}, {vec_expr(w, h)});")
-
-        case {"x": x, "y": y, "width": w, "height": h, "type": "Graphics"}:
-            texture = texture_expr(obj)
-            lines.append(
-                f"builder.rect_graphics({texture}, {vec_expr(x, y)}, {vec_expr(w, h)});"
-            )
-
-        case {"polygon": polygon, "x": x, "y": y, "type": "Trigger"}:
-            action = trigger_action_expr(obj)
-            points = polygon_to_expr(polygon, x, y)
-            lines.append(
-                f"builder.polygon_trigger({action}, {points});"
-            )
-
-        case {"x": x, "y": y, "width": w, "height": h, "type": "Trigger"}:
-            action = trigger_action_expr(obj)
-            lines.append(
-                f"builder.rect_trigger({action}, {vec_expr(x, y)}, {vec_expr(w, h)});"
-            )
-
-        case {"x": x, "y": y, "type": "LevelStart"}:
-            if level_start is not None:
-                raise Exception("Duplicate LevelStart object")
-            level_start = vec_expr(x, y)
-
-        case other:
-            raise Exception(f"Unknown object type with ID {obj.get('id')}")
 
 if level_start is None:
     raise Exception("Expected a level start object in the level")

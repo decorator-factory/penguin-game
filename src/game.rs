@@ -382,7 +382,10 @@ mod updates {
         };
 
         state.debug_strings.extend_from_slice(&[
-            format!("speed: x={:+.2}, y={:+.2}", penguin.vel.x, penguin.vel.y),
+            format!(
+                "speed: x={:+.2}, y={:+.2}, g={}",
+                penguin.vel.x, penguin.vel.y, penguin.is_grounded
+            ),
             format!("collision candidates: rects={}, polygons={}", rects.len(), polygons.len()),
         ]);
 
@@ -402,9 +405,9 @@ mod updates {
             if let Some(dv) = circle_impacts_rect(penguin_circle.offset(penguin.vel), rect) {
                 penguin.pos += dv;
 
-                if dv.length_squared() > 1e-6 {
+                if dv.length_squared() > 1e-3 {
                     let cancel_vec = penguin.vel.project_onto(dv);
-                    penguin.vel -= cancel_vec / 4.;
+                    penguin.vel -= cancel_vec / 1.5;
                 }
             }
 
@@ -412,8 +415,8 @@ mod updates {
                 dv_for_grounded += dv;
 
                 let angle = dv.to_angle();
-                any_delta_points_upwards = any_delta_points_upwards
-                    || (-PI / 2. - 0.34 < angle && angle < -PI / 2. + 0.34);
+                any_delta_points_upwards =
+                    any_delta_points_upwards || (-PI / 2. - 0.1 < angle && angle < -PI / 2. + 0.1);
             }
         }
 
@@ -421,9 +424,9 @@ mod updates {
             if let Some(dv) = circle_impacts_convex(penguin_circle.offset(penguin.vel), poly) {
                 penguin.pos += dv;
 
-                if dv.length_squared() > 1e-6 {
+                if dv.length_squared() > 1e-3 {
                     let cancel_vec = penguin.vel.project_onto(dv);
-                    penguin.vel -= cancel_vec / 4.;
+                    penguin.vel -= cancel_vec / 1.5;
                 }
             }
 
@@ -431,14 +434,16 @@ mod updates {
                 dv_for_grounded += dv;
 
                 let angle = dv.to_angle();
-                any_delta_points_upwards = any_delta_points_upwards
-                    || (-PI / 2. - 0.67 < angle && angle < -PI / 2. + 0.67);
+                any_delta_points_upwards =
+                    any_delta_points_upwards || (-PI / 2. - 0.1 < angle && angle < -PI / 2. + 0.1);
             }
         }
 
         let is_grounded = {
             let dv_angle = dv_for_grounded.to_angle();
-            any_delta_points_upwards || (-PI / 2. - 0.34 < dv_angle && dv_angle < -PI / 2. + 0.34)
+            dv_for_grounded.length_squared() > 1e-4
+                && (any_delta_points_upwards
+                    || (-PI / 2. - 0.1 < dv_angle && dv_angle < -PI / 2. + 0.1))
         };
         penguin.is_grounded = is_grounded;
 
@@ -585,6 +590,7 @@ mod graphics {
         draw_utils::{
             draw_rounded_rect,
             draw_vclipped_circle,
+            measure_multiline_text,
         },
         game::{
             Penguin,
@@ -636,19 +642,15 @@ mod graphics {
             1.0
         };
 
-        let default_anchor = tooltip.origin - vec2(0.0, 6.0);
+        let default_anchor = tooltip.origin - vec2(0.0, 4.0);
 
         // `measure_text` doesn't handle multiline text. Argh!
-        let text_size = tooltip
-            .text
-            .lines()
-            .map(|line| measure_text(line, None, FONT_SIZE, 1.0))
-            .fold(vec2(0.0, 0.0), |acc, dim| vec2(acc.x.max(dim.width), acc.y + dim.height));
-        let padding = vec2(8.0, 16.0);
+        let text_dims = measure_multiline_text(tooltip.text, FONT_SIZE);
+        let padding = vec2(6.0, 6.0);
 
         let compute_pos_and_wh = |anchor| {
-            let top_left = anchor - vec2(text_size.x / 2.0, text_size.y) - padding * 2.0;
-            let dimensions = text_size + padding * 2.0;
+            let top_left = anchor - vec2(text_dims.width / 2.0, text_dims.height) - padding * 2.0;
+            let dimensions = vec2(text_dims.width, text_dims.height) + padding * 2.0;
             (top_left, dimensions)
         };
 
@@ -673,15 +675,13 @@ mod graphics {
             );
         }
 
-        draw_rounded_rect(top_left, dimensions, 8.0, WHITE.with_alpha(alpha));
-
-        let y_offset = measure_text("IAj_! ", None, FONT_SIZE, 1.0).offset_y;
+        draw_rounded_rect(top_left, dimensions, 6.0, WHITE.with_alpha(alpha));
         draw_multiline_text(
             tooltip.text,
             top_left.x + padding.x,
-            top_left.y + padding.y + y_offset,
+            top_left.y + padding.y + text_dims.offset_y,
             f32::from(FONT_SIZE),
-            Some(1.0),
+            None,
             BLACK.with_alpha(0.5 + alpha * 0.5),
         );
     }
@@ -744,7 +744,7 @@ mod graphics {
         draw_circle(cx, cy, RAD, PENGUINGRAY_EMPTY);
         draw_circle(cx, cy, RAD / 1.5, PENGUINGRAY);
         draw_vclipped_circle(cx, cy, RAD, fill_fraction, PENGUINGRAY);
-        draw_circle_lines(cx, cy, RAD - 1.0, 2.0, PENGUINGRAY);
+        draw_circle_lines(cx, cy, RAD - 2.0, 2.0, PENGUINGRAY);
 
         draw_ellipse(cx, cy + RAD * 0.4, RAD * 0.65, RAD * 0.4, 0.0, LIGHTGRAY);
         draw_rectangle(cx - RAD * 0.6, cy - RAD * 0.2, RAD * 1.2, RAD * 0.4, PENGUINGRAY);
@@ -794,10 +794,6 @@ fn circle_impacts_rect_alt(circle: Circle, rect: Rect) -> Option<parry2d::query:
     let ball_pos = Isometry2::translation(circle.x, circle.y);
     query::contact(&cuboid_pos, &cuboid, &ball_pos, &ball, 0.0).unwrap()
 }
-
-// fn measure_multiline_text(text: &str, font_size: u16) -> Vec2 {
-
-// }
 
 // Level stuff
 
