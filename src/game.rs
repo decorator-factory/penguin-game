@@ -673,7 +673,7 @@ mod graphics {
             );
         }
 
-        draw_rounded_rect(top_left, dimensions, 4.0, WHITE.with_alpha(alpha));
+        draw_rounded_rect(top_left, dimensions, 8.0, WHITE.with_alpha(alpha));
 
         let y_offset = measure_text("IAj_! ", None, FONT_SIZE, 1.0).offset_y;
         draw_multiline_text(

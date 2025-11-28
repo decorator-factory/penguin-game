@@ -1,3 +1,5 @@
+use std::f32::consts::PI;
+
 use arrayvec::ArrayVec;
 use macroquad::prelude::*;
 use miniquad::{
@@ -29,35 +31,35 @@ impl From<&Texture2D> for DrawOpts {
     }
 }
 
-pub fn draw_textured_rect(pos: Vec2, wh: Vec2, opts: DrawOpts) {
+pub fn draw_textured_rect(pos: Vec2, wh: Vec2, opts: &DrawOpts) {
     // SAFETY: internal context does not escape this function
     let ctx = unsafe { get_internal_gl() };
     let gl = ctx.quad_gl;
     let DrawOpts { color, texture } = opts;
 
     #[rustfmt::skip]
-    let vertices = if is_texture_repeating(ctx.quad_context, &texture) {
+    let vertices = if is_texture_repeating(ctx.quad_context, texture) {
         // this draws the texture as if it started at (0, 0)
         let points = [pos, pos + wh.with_y(0.0), pos + wh, pos + wh.with_x(0.0)];
         points.map(|point| {
             let (u, v) = (point.x / texture.width(), point.y / texture.height());
-            Vertex::new(point.x, point.y, 0., u, v, color)
+            Vertex::new(point.x, point.y, 0., u, v, *color)
         })
     } else {
         [
-            Vertex::new(pos.x,        pos.y,        0.0, 0.0, 0.0, color),
-            Vertex::new(pos.x + wh.x, pos.y,        0.0, 1.0, 0.0, color),
-            Vertex::new(pos.x + wh.x, pos.y + wh.y, 0.0, 1.0, 1.0, color),
-            Vertex::new(pos.x,        pos.y + wh.y, 0.0, 0.0, 1.0, color),
+            Vertex::new(pos.x,        pos.y,        0.0, 0.0, 0.0, *color),
+            Vertex::new(pos.x + wh.x, pos.y,        0.0, 1.0, 0.0, *color),
+            Vertex::new(pos.x + wh.x, pos.y + wh.y, 0.0, 1.0, 1.0, *color),
+            Vertex::new(pos.x,        pos.y + wh.y, 0.0, 0.0, 1.0, *color),
         ]
     };
 
-    gl.texture(Some(&texture));
+    gl.texture(Some(texture));
     gl.draw_mode(DrawMode::Triangles);
     gl.geometry(&vertices, &[0, 1, 3, 1, 2, 3]);
 }
 
-pub fn draw_textured_poly(points: &[Vec2], opts: DrawOpts) {
+pub fn draw_textured_poly(points: &[Vec2], opts: &DrawOpts) {
     debug_assert!(points.len() < 1024, "polygon is suspiciously large");
 
     // SAFETY: internal context does not escape this function
@@ -72,7 +74,7 @@ pub fn draw_textured_poly(points: &[Vec2], opts: DrawOpts) {
     for (i, point) in points.iter().enumerate() {
         // Texturing a polygon probably doesn't make sense with a non-repeating texture, right?
         let (u, v) = (point.x / texture.width(), point.y / texture.height());
-        vertices.push(Vertex::new(point.x, point.y, 0., u, v, color));
+        vertices.push(Vertex::new(point.x, point.y, 0., u, v, *color));
 
         #[expect(clippy::cast_possible_truncation, reason = "see debug_assert")]
         if i != 0 && i != points.len() - 1 {
@@ -80,7 +82,7 @@ pub fn draw_textured_poly(points: &[Vec2], opts: DrawOpts) {
         }
     }
 
-    gl.texture(Some(&texture));
+    gl.texture(Some(texture));
     gl.draw_mode(DrawMode::Triangles);
     gl.geometry(&vertices, &indices);
 }
@@ -113,7 +115,7 @@ pub fn draw_vclipped_circle(x: f32, y: f32, radius: f32, ratio: f32, color: Colo
     }
     points.push(points[0]);
 
-    draw_textured_poly(&points, color.into());
+    draw_textured_poly(&points, &color.into());
 }
 
 #[allow(dead_code, reason = "this function is useful for debugging")]
@@ -128,19 +130,32 @@ pub fn draw_arrow(start: Vec2, end: Vec2, color: Color) {
 }
 
 /// TODO: handle partially transparent colors
+#[rustfmt::skip]
 pub fn draw_rounded_rect(pos: Vec2, wh: Vec2, r: f32, color: Color) {
     // AxxxxB
     // yyyyyy
     // CzzzzD
 
-    draw_rectangle(pos.x + r, pos.y, wh.x - r * 2.0, r, color); // x
-    draw_rectangle(pos.x, pos.y + r, wh.x, wh.y - r * 2.0, color); // y
-    draw_rectangle(pos.x + r, pos.y + wh.y - r, wh.x - r * 2.0, r, color); // z
+    draw_rectangle(pos.x + r, pos.y,            wh.x - r * 2.0, r,              color); // x
+    draw_rectangle(pos.x,     pos.y + r,        wh.x,           wh.y - r * 2.0, color); // y
+    draw_rectangle(pos.x + r, pos.y + wh.y - r, wh.x - r * 2.0, r,              color); // z
 
-    draw_circle(pos.x + r, pos.y + r, r, color); // A
-    draw_circle(pos.x + wh.x - r, pos.y + r, r, color); // B
-    draw_circle(pos.x + r, pos.y + wh.y - r, r, color); // C
-    draw_circle(pos.x + wh.x - r, pos.y + wh.y - r, r, color); //
+    let opts = color.into();
+    draw_quarter_circle(pos + vec2(r, r),        r, -PI/2., &opts); // A
+    draw_quarter_circle(pos + vec2(wh.x - r, r), r, 0.0,    &opts); // B
+    draw_quarter_circle(pos + vec2(r, wh.y - r), r, PI,     &opts); // C
+    draw_quarter_circle(pos + wh - vec2(r, r),   r, PI/2.,  &opts); // D
+
+}
+
+pub fn draw_quarter_circle(corner: Vec2, r: f32, rotate: f32, opts: &DrawOpts) {
+    let mut points: ArrayVec<Vec2, 12> = ArrayVec::new();
+    points.push(corner);
+    for n in 0u8..=10 {
+        let angle = -PI / 2.0 * (f32::from(n) / 10.0) + rotate;
+        points.push(corner + Vec2::from_angle(angle) * r);
+    }
+    draw_textured_poly(&points, opts);
 }
 
 fn is_texture_repeating(backend: &dyn RenderingBackend, texture: &Texture2D) -> bool {

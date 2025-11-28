@@ -57,10 +57,10 @@ impl Graphic {
     fn macroquad_draw(&self) {
         match self {
             Graphic::Rect { pos, wh, texture } => {
-                draw_textured_rect(*pos, *wh, texture.into());
+                draw_textured_rect(*pos, *wh, &texture.into());
             }
             Graphic::Polygon { points, texture } => {
-                draw_textured_poly(points, texture.into());
+                draw_textured_poly(points, &texture.into());
             }
         }
     }
