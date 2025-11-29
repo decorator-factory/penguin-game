@@ -21,6 +21,24 @@ pub trait InputDevice {
     fn device_info(&'_ self) -> Cow<'_, str>;
 }
 
+impl InputDevice for &mut dyn InputDevice {
+    fn next_update(&mut self) {
+        InputDevice::next_update(*self);
+    }
+
+    fn is_input_down(&self, input: Input) -> bool {
+        InputDevice::is_input_down(*self, input)
+    }
+
+    fn look_angle_radians(&self) -> f32 {
+        InputDevice::look_angle_radians(*self)
+    }
+
+    fn device_info(&'_ self) -> Cow<'_, str> {
+        InputDevice::device_info(*self)
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct MacroquadInput;
 

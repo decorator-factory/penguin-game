@@ -10,7 +10,10 @@ use macroquad::prelude::*;
 use miniquad::TextureWrap;
 use parry2d::shape::ConvexPolygon;
 
-use crate::levels;
+use crate::{
+    input::InputDevice,
+    levels,
+};
 
 const UPS_PRESETS: &[f64] =
     &[1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 240.0, 480.0, 1200.0, 2400.0, 12000.0, 24000.0];
@@ -32,6 +35,115 @@ const _: () = assert!(TOOLTIP_TTL_FADE_BEGIN < TOOLTIP_TTL_MAX, "");
 const STATUS_TTL_MAX: u16 = 360;
 const STATUS_TTL_FADE_BEGIN: u16 = 180;
 const _: () = assert!(STATUS_TTL_FADE_BEGIN < STATUS_TTL_MAX, "");
+
+#[derive(Default, Debug)]
+pub enum LevelSource {
+    #[default]
+    Default,
+    New,
+}
+
+pub async fn run_game(
+    device: &mut dyn InputDevice,
+    level_source: LevelSource,
+    skip_until_update: u64,
+) {
+    let builder = levels::LevelBuilder::new(load_textures());
+    let level = match level_source {
+        LevelSource::Default => build_default_level(builder),
+        LevelSource::New => crate::generated_levels::level_test::build(builder),
+    };
+    let mut state = GameState::new(level);
+
+    macroquad::logging::info!("Initialized penguin-game state!");
+
+    let mut time_bank: f64 = 0.0;
+
+    let mut update_number = 0u64;
+    let mut frame_number = 0u64;
+
+    let mut stats = Stats::new();
+
+    let mut ups_index: usize = if skip_until_update == 0 {
+        DEFAULT_UPS_PRESET
+    } else {
+        0 // slowest
+    };
+
+    while update_number < skip_until_update {
+        // TODO: duplication with main loop?
+        device.next_update();
+        update_number += 1;
+        updates::fixed_update(&mut state, device);
+    }
+
+    let mut last_time = get_time();
+    // Handling the quit event manually allows us to save the demo recording
+    prevent_quit();
+    while !is_quit_requested() {
+        if is_key_pressed(KeyCode::Q) && ups_index > 0 {
+            ups_index -= 1;
+        } else if is_key_pressed(KeyCode::E) && ups_index < UPS_PRESETS.len() - 1 {
+            ups_index += 1;
+        }
+        let ups = UPS_PRESETS[ups_index];
+
+        // Update debt logic
+        let now = get_time();
+        time_bank += now - last_time;
+        last_time = now;
+        let update_time = 1.0 / ups;
+        if time_bank >= 0.5 && ups > 2.0 {
+            // We "bankrupt" the time bank and assume we have 1 update left to do.
+            // This can happen due to several reasons:
+            // - lag spikes in other programs
+            // - using very high UPS (like when pressing R) using a debug build and a low end device
+            // - on Linux I only get one update per second when the application is minimized
+            // and we don't want to run a million updates in a single frame
+            time_bank = update_time;
+        }
+
+        stats.measure_update(|| {
+            while time_bank >= update_time {
+                device.next_update();
+                update_number += 1;
+                updates::fixed_update(&mut state, device);
+                time_bank -= update_time;
+            }
+        });
+
+        let fps = get_fps();
+        let stats_line = format!(
+            "perf:{} up:{} fr:{} dev:{}",
+            stats,
+            update_number,
+            frame_number,
+            device.device_info(),
+        );
+        let fps_line = format!("FPS: {fps:03}, target UPS: {ups:04}");
+
+        let font_size = 16.0;
+        stats.measure_graphics(|| {
+            graphics::draw_state(&state, device.look_angle_radians());
+            let mut y = font_size * 1.25;
+            y += draw_text(&fps_line, 8.0, y, font_size, WHITE).height + 2.0;
+            y += draw_text(&stats_line, 8.0, y, font_size, WHITE).height + 2.0;
+            for string in &state.debug_strings {
+                for line in string.lines() {
+                    y += draw_text(line, 8.0, y, font_size, WHITE).height + 2.0;
+                }
+            }
+        });
+        next_frame().await;
+        frame_number += 1;
+        #[expect(clippy::cast_sign_loss)]
+        if frame_number.is_multiple_of((fps / 4) as u64) {
+            stats.sample();
+        }
+    }
+
+    macroquad::logging::warn!("Closing penguin-game window");
+}
 
 #[derive(Clone, Debug)]
 struct Penguin {
@@ -117,110 +229,6 @@ impl GameState {
             tooltip: Tooltip { text: "", ttl: 0, origin: vec2(0.0, 0.0) },
         }
     }
-}
-
-pub async fn run_game(
-    device: &mut dyn crate::input::InputDevice,
-    new_level: bool,
-    skip_until_update: u64,
-) {
-    let builder = levels::LevelBuilder::new(load_textures());
-    let level = if new_level {
-        // this is very MVP quality...
-        crate::generated_levels::level_test::build(builder)
-    } else {
-        build_default_level(builder)
-    };
-    let mut state = GameState::new(level);
-
-    macroquad::logging::info!("Initialized penguin-game state!");
-
-    let mut time_bank: f64 = 0.0;
-
-    let mut update_number = 0u64;
-    let mut frame_number = 0u64;
-
-    let mut stats = Stats::new();
-
-    let mut ups_index: usize = if skip_until_update == 0 {
-        DEFAULT_UPS_PRESET
-    } else {
-        0 // slowest
-    };
-
-    while update_number < skip_until_update {
-        // TODO: duplication with main loop?
-        device.next_update();
-        update_number += 1;
-        updates::fixed_update(&mut state, device);
-    }
-
-    let mut last_time = get_time();
-    // Handling the quit event manually allows us to save the demo recording
-    prevent_quit();
-    while !is_quit_requested() {
-        if is_key_pressed(KeyCode::Q) && ups_index > 0 {
-            ups_index -= 1;
-        } else if is_key_pressed(KeyCode::E) && ups_index < UPS_PRESETS.len() - 1 {
-            ups_index += 1;
-        }
-        let ups = if update_number < skip_until_update { 12000.0 } else { UPS_PRESETS[ups_index] };
-
-        // Update debt logic
-        let now = get_time();
-        time_bank += now - last_time;
-        last_time = now;
-        let update_time = 1.0 / ups;
-        if time_bank >= 0.5 && ups > 2.0 {
-            // We "bankrupt" the time bank and assume we have 1 update left to do.
-            // This can happen due to several reasons:
-            // - lag spikes in other programs
-            // - using very high UPS (like when pressing R) using a debug build and a low end device
-            // - on Linux I only get one update per second when the application is minimized
-            // and we don't want to run a million updates in a single frame
-            time_bank = update_time;
-        }
-
-        stats.measure_update(|| {
-            while time_bank >= update_time {
-                device.next_update();
-                update_number += 1;
-                updates::fixed_update(&mut state, device);
-                time_bank -= update_time;
-            }
-        });
-
-        let fps = get_fps();
-        let stats_line = format!(
-            "perf:{} up:{} fr:{} dev:{}",
-            stats,
-            update_number,
-            frame_number,
-            device.device_info(),
-        );
-        let fps_line = format!("FPS: {fps:03}, target UPS: {ups:04}");
-
-        let font_size = 16.0;
-        stats.measure_graphics(|| {
-            graphics::draw_state(&state, device.look_angle_radians());
-            let mut y = font_size * 1.25;
-            y += draw_text(&fps_line, 8.0, y, font_size, WHITE).height + 2.0;
-            y += draw_text(&stats_line, 8.0, y, font_size, WHITE).height + 2.0;
-            for string in &state.debug_strings {
-                for line in string.lines() {
-                    y += draw_text(line, 8.0, y, font_size, WHITE).height + 2.0;
-                }
-            }
-        });
-        next_frame().await;
-        frame_number += 1;
-        #[expect(clippy::cast_sign_loss)]
-        if frame_number.is_multiple_of((fps / 4) as u64) {
-            stats.sample();
-        }
-    }
-
-    macroquad::logging::warn!("Closing penguin-game window");
 }
 
 struct Stats {
