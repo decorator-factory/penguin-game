@@ -35,19 +35,15 @@ If you get stuck, see how the demo penguin completes a level.
 ## Command-Line Interface (when running on desktop)
 
 ```
-penguin-game
-
-Usage:
-    penguin-game play [--new-level]
-    penguin-game demo [--input-file <path>] [--skip-until-update <upd>]
-    penguin-game record-demo --output-file <path>
-    penguin-game keep-recording-demo --input-file <path> --output-file <path>
-    penguin-game re-record-demo --input-file <path> --output-file <path>
+penguin-game \
+    [--new-level]
+    [--read-demo <@default|path> [--skip-until-update <u64>]]
+    [--write-demo <path>]
 ```
 
-- `penguin-game play` starts the game as expected
-- `penguin-game demo` shows a demo movie; if no input is provided, the built-in demo movie (found in `demos/intended.demo`) is played
-- `penguin-game record-demo --output-file movie.demo` records a demo movie and outputs it to `movie.demo` (that file must not already exist). The demo is saved in a simple text format that you can tweak yourself.
+- `penguin-game` starts the game as expected
+- `penguin-game --read-demo path/to/file.demo` shows a demo movie; if `@default` is provided, the built-in demo movie (found in `demos/intended.demo`) is played
+- `penguin-game --write-demo movie.demo` records a demo movie and outputs it to `movie.demo` (that file must not already exist). The demo is saved in a simple text format that you can tweak yourself.
 
     ```
     penguindemo-text-v0
@@ -64,11 +60,10 @@ Usage:
     at  332: off  left
     ```
 
-- `penguin-game keep-recording-demo --input-file movie1.demo --output-file movie2.demo`
-    starts out playing the demo movie in `movie1.demo`, and when it's done, records a new demo movie and puts that into `movie2.demo`. This allows you to record complicated demos in multiple sittings. Note that the demo in `movie2.demo` is incomplete, you'll have to append it to `movie1.demo` manually.
-
-- `penguin-game re-record-demo --input-file movie1.demo --output-file movie2.demo` plays a demo and records it into a demo.
-    it exists for re-encoding existing demos in a new format.
+- `penguin-game --read-demo movie1.demo --write-demo movie2.demo`
+    starts out playing the demo movie in `movie1.demo`, and when it's done, records a new demo movie and puts that into `movie2.demo`. This allows you to record complicated demos in multiple sittings. I'm very bad at videogames, so all the demos in the `demos/` are 
+    constructed using some amount of "demo surgery" where one tweaks certain inputs, stitches together different demos, or removes
+    sections where one made embarrassing mistakes.
 
 ## TODO list
 

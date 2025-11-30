@@ -45,6 +45,7 @@ impl DemoMovie {
     }
 }
 
+#[derive(Debug)]
 pub struct DemoPlayback {
     upd: u64,
     movie: DemoMovie,
@@ -111,6 +112,7 @@ impl InputDevice for DemoPlayback {
 /// Decorator for an input device that records inputs
 /// (in a smart way, to reduce the movie size) to eventually
 /// retrieve them as a [`DemoMovie`].
+#[derive(Debug)]
 pub struct DemoRecorder<D> {
     actions: Vec<(u64, DemoAction)>,
     current_inputs: EnumSet<Input>,
@@ -520,7 +522,7 @@ mod parse_tests {
         assert_eq!(err, DemoParseError {
             lineno: 1,
             colno: 1,
-            detail: DemoParseErrorDetail::InvalidHeader,
+            detail: DemoParseErrorDetail::InvalidHeader
         });
     }
 
@@ -531,7 +533,7 @@ mod parse_tests {
         assert_eq!(err, DemoParseError {
             lineno: 1,
             colno: 1,
-            detail: DemoParseErrorDetail::InvalidHeader,
+            detail: DemoParseErrorDetail::InvalidHeader
         });
     }
 

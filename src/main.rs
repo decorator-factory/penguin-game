@@ -4,12 +4,13 @@ use std::{
     borrow::Cow,
     fs::File,
     io::Read,
-    path::PathBuf,
+    path::{
+        Path,
+        PathBuf,
+    },
 };
 
 use macroquad::prelude::*;
-
-use crate::game::LevelSource;
 
 mod demo;
 mod draw_utils;
@@ -31,7 +32,6 @@ fn main() {
     };
 
     let args = cli::parse_args_or_die();
-    let args = RunArgs::from_cli_args(args);
 
     macroquad::Window::from_config(conf, async move {
         fix_panic_handling();
@@ -41,22 +41,6 @@ fn main() {
         }
     });
 }
-
-#[derive(Debug)]
-enum DemoSource {
-    Default,
-    NewLevelDemo,
-    File(PathBuf),
-}
-
-#[derive(Default, Debug)]
-struct RunArgs {
-    level_source: LevelSource,
-    input_demo: Option<(DemoSource, u64)>,
-    record_to: Option<PathBuf>,
-    keep_playing: bool,
-}
-
 
 fn try_read_demo_movie(input_path: &std::path::Path) -> Result<demo::DemoMovie, String> {
     let mut input_file = File::open(input_path)
@@ -70,99 +54,59 @@ fn try_read_demo_movie(input_path: &std::path::Path) -> Result<demo::DemoMovie, 
         .map_err(|e| format!("Problem in demo file {}: {}", input_path.display(), e))
 }
 
-fn try_create_exclusive_file(output_path: &std::path::Path) -> Result<File, String> {
-    let file = std::fs::OpenOptions::new().write(true).create_new(true).open(output_path);
-    file.map_err(|e| format!("Could not open output file {}: {}", output_path.display(), e))
-}
-
-impl RunArgs {
-    fn from_cli_args(args: cli::Args) -> RunArgs {
-        match args {
-            cli::Args::JustPlay { is_new_level } => RunArgs {
-                level_source: if is_new_level { LevelSource::New } else { LevelSource::Default },
-                ..Default::default()
-            },
-            cli::Args::PlayDemo { input_path, skip_until_update } => {
-                let source = match input_path {
-                    Some(path) => DemoSource::File(path),
-                    None => DemoSource::Default,
-                };
-                RunArgs { input_demo: Some((source, skip_until_update)), ..Default::default() }
-            }
-            cli::Args::RecordDemo { output_path } => RunArgs {
-                input_demo: None,
-                level_source: LevelSource::Default,
-                record_to: Some(output_path),
-                ..Default::default()
-            },
-            cli::Args::ReRecordDemo { input_path, output_path } => RunArgs {
-                input_demo: Some((DemoSource::File(input_path), 0)),
-                level_source: LevelSource::Default,
-                record_to: Some(output_path),
-                ..Default::default()
-            },
-            cli::Args::KeepRecordingDemo { input_path, output_path } => RunArgs {
-                input_demo: Some((DemoSource::File(input_path), 0)),
-                level_source: LevelSource::Default,
-                record_to: Some(output_path),
-                keep_playing: true,
-            },
-            cli::Args::PlayNewLevelDemo => RunArgs {
-                input_demo: Some((DemoSource::NewLevelDemo, 0)),
-                level_source: LevelSource::New,
-                ..Default::default()
-            },
-        }
-    }
-}
-
-async fn amain(args: RunArgs) -> Result<(), String> {
-    let in_movie;
-    let mut demo_playback;
+async fn amain(args: Args) -> Result<(), String> {
     let (base_device, skip_until_update, last_update): (&mut dyn input::InputDevice, _, _) =
         match args.input_demo {
-            Some((source, skip_updates)) => {
-                in_movie = match source {
-                    DemoSource::Default => demo::make_default_demo_movie(),
-                    DemoSource::NewLevelDemo => demo::make_new_level_demo_movie(),
-                    DemoSource::File(path) => try_read_demo_movie(&path)?,
-                };
+            Some(InputDemo { source, skip_until_update }) => {
+                let in_movie = fetch_demo(source)?;
                 let last_update = in_movie.last_update();
-                demo_playback = demo::DemoPlayback::new(in_movie);
-                (&mut demo_playback, skip_updates, last_update)
+                (&mut demo::DemoPlayback::new(in_movie), skip_until_update, last_update)
             }
             None => (&mut input::MacroquadInput, 0, None),
         };
 
     if let Some(out_path) = args.record_to {
-        let mut out_file = try_create_exclusive_file(&out_path)?;
-
-        let output_movie = if args.keep_playing {
+        with_exclusive_file(&out_path, async |out_file| {
             let threshold_upd = last_update.unwrap_or(0) + 1;
             let names = (Cow::Borrowed("playback"), Cow::Borrowed("recording"));
             let recorder = demo::DemoRecorder::new(input::MacroquadInput, threshold_upd);
             let mut composed =
                 input::ComposedInput::new(base_device, recorder, threshold_upd, names);
+
             game::run_game(&mut composed, args.level_source, skip_until_update).await;
-            composed.into_inner().1.collect_recording()
-        } else {
-            let mut recorder = demo::DemoRecorder::new(input::MacroquadInput, 0);
-            game::run_game(&mut recorder, args.level_source, skip_until_update).await;
-            recorder.collect_recording()
-        };
 
-        let write_result =
-            demo::unparse_movie(&output_movie, &mut out_file).and_then(|()| out_file.sync_all());
-
-        if let Err(e) = write_result {
-            return Err(format!("Failed to write demo movie to {}: {}", out_path.display(), e));
-        }
+            let output_movie = composed.into_inner().1.collect_recording();
+            demo::unparse_movie(&output_movie, out_file).map_err(|e| e.to_string())?;
+            Ok(())
+        })
+        .await?;
         println!("Wrote {} successfully!", out_path.display());
     } else {
         game::run_game(base_device, args.level_source, skip_until_update).await;
     }
 
     Ok(())
+}
+
+fn fetch_demo(source: DemoSource) -> Result<demo::DemoMovie, String> {
+    match source {
+        DemoSource::Default => Ok(demo::make_default_demo_movie()),
+        DemoSource::NewLevelDemo => Ok(demo::make_new_level_demo_movie()),
+        DemoSource::File(path) => try_read_demo_movie(&path),
+    }
+}
+
+async fn with_exclusive_file(
+    path: &Path,
+    inner: impl AsyncFnOnce(&mut File) -> Result<(), String>,
+) -> Result<(), String> {
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map_err(|e| format!("Could not open output file {}: {}", path.display(), e))?;
+    inner(&mut file).await?;
+    file.sync_all().map_err(|e| format!("while flushing the file: {e}"))
 }
 
 /// Improve panic handling on webassembly.
@@ -190,130 +134,107 @@ fn fix_panic_handling() {
     }));
 }
 
+#[derive(Default, Debug)]
+struct Args {
+    level_source: game::LevelSource,
+    input_demo: Option<InputDemo>,
+    record_to: Option<PathBuf>,
+}
+
+#[derive(Debug)]
+enum DemoSource {
+    Default,
+    NewLevelDemo,
+    #[cfg_attr(target_family = "wasm", expect(dead_code))]
+    File(PathBuf),
+}
+
+#[derive(Debug)]
+struct InputDemo {
+    source: DemoSource,
+    skip_until_update: u64,
+}
+
 mod cli {
-    use std::path::PathBuf;
-
-    #[cfg(not(target_family = "wasm"))]
-    use clap::{
-        Arg,
-        ArgAction,
-        Command,
-        builder::ValueParser,
+    use super::game::LevelSource;
+    use super::{
+        Args,
+        DemoSource,
+        InputDemo,
     };
-
-    #[allow(dead_code)]
-    #[derive(Debug)]
-    pub enum Args {
-        JustPlay { is_new_level: bool },
-        PlayDemo { input_path: Option<PathBuf>, skip_until_update: u64 },
-        PlayNewLevelDemo, // wasm only -- honestly it's all one big hack
-        RecordDemo { output_path: PathBuf },
-        ReRecordDemo { input_path: PathBuf, output_path: PathBuf },
-        KeepRecordingDemo { input_path: PathBuf, output_path: PathBuf },
-    }
 
     #[cfg(not(target_family = "wasm"))]
     pub fn parse_args_or_die() -> Args {
-        use clap::value_parser;
+        use std::ffi::OsString;
+        use std::path::PathBuf;
 
-        let output_file_arg = || {
-            Arg::new("output_file")
-                .short('o')
-                .long("output-file")
-                .value_name("path")
-                .required(true)
-                .value_parser(ValueParser::path_buf())
+        use clap::{
+            Arg,
+            ArgAction,
+            Command,
+            builder::ValueParser,
+            value_parser,
         };
-        let input_file_arg = || {
-            Arg::new("input_file")
-                .short('i')
-                .long("input-file")
-                .value_name("path")
-                .required(true)
-                .value_parser(ValueParser::path_buf())
-        };
+
         let matches = Command::new("penguin-game")
             .version("v0.0")
             .about(
                 "A 2D platformer game where you rocket jump as a penguin. \
                 See the README at https://github.com/decorator-factory/penguin-game \
-                for extended CLI help.",
-            )
+                for extended CLI help.")
             .propagate_version(true)
-            .subcommand_required(true)
-            .arg_required_else_help(true)
-            .subcommand(
-                Command::new("play")
-                    .about("Play the game normally")
-                    .arg(Arg::new("new_level").long("new-level").action(ArgAction::SetTrue)),
-            )
-            .subcommand(
-                Command::new("demo")
-                    .about("Play back a demo movie")
-                    .arg(input_file_arg().required(false))
-                    .arg(
-                        Arg::new("skip_until_update")
-                            .long("skip-until-update")
-                            .help("if present, run movie very fast until this update number and then resume at UPS=1")
-                            .short('u')
-                            .value_parser(value_parser!(u64))
-                            .default_value("0"),
-                    ),
-            )
-            .subcommand(
-                Command::new("record-demo")
-                    .about("Record a demo movie and save it to a file when the game is closed")
-                    .arg(output_file_arg()),
-            )
-            .subcommand(
-                Command::new("keep-recording-demo")
-                    .about(
-                        "Play a demo from `input-file`, then record a demo movie fragment \
-                            and save it to `output-file`",
-                    )
-                    .arg(input_file_arg())
-                    .arg(output_file_arg()),
-            )
-            .subcommand(
-                Command::new("re-record-demo")
-                    .about(
-                        "Play back a demo from `input-file` and also record it, \
-                        saving it to `output-file`",
-                    )
-                    .arg(input_file_arg())
-                    .arg(output_file_arg()),
-            )
+            .arg(Arg::new("write_demo")
+                .short('w')
+                .long("write-demo")
+                .value_name("path")
+                .value_parser(ValueParser::path_buf()))
+            .arg(
+                Arg::new("read_demo")
+                .short('r')
+                .long("read-demo")
+                .value_name("@default|path")
+                .value_parser(ValueParser::os_string()))
+            .arg(Arg::new("new_level").long("new-level").action(ArgAction::SetTrue))
+            .arg(Arg::new("skip_until_update")
+                .long("skip-until-update")
+                .help("When a demo is provided, the game will skip this many ticks, and then set the UPS to 1.")
+                .short('u')
+                .value_parser(value_parser!(u64))
+                .default_value("0"))
             .get_matches();
 
-        match matches.subcommand().unwrap() {
-            ("play", args) => Args::JustPlay { is_new_level: *args.get_one("new_level").unwrap() },
-            ("demo", args) => Args::PlayDemo {
-                input_path: args.get_one("input_file").cloned(),
-                skip_until_update: *args.get_one("skip_until_update").unwrap(),
-            },
-            ("record-demo", args) => Args::RecordDemo {
-                output_path: args.get_one::<PathBuf>("output_file").unwrap().clone(),
-            },
-            ("keep-recording-demo", args) => Args::KeepRecordingDemo {
-                input_path: args.get_one::<PathBuf>("input_file").unwrap().clone(),
-                output_path: args.get_one::<PathBuf>("output_file").unwrap().clone(),
-            },
-            ("re-record-demo", args) => Args::ReRecordDemo {
-                input_path: args.get_one::<PathBuf>("input_file").unwrap().clone(),
-                output_path: args.get_one::<PathBuf>("output_file").unwrap().clone(),
-            },
-            _ => unreachable!(),
-        }
+        let is_new_level = *matches.get_one::<bool>("new_level").unwrap_or(&false);
+        let level_source = if is_new_level { LevelSource::New } else { LevelSource::Default };
+
+        let demo_source = matches.get_one::<OsString>("read_demo").map(|path| {
+            if path == "@default" {
+                if is_new_level { DemoSource::NewLevelDemo } else { DemoSource::Default }
+            } else {
+                DemoSource::File(PathBuf::from(path))
+            }
+        });
+        let skip_until_update = *matches.get_one::<u64>("skip_until_update").unwrap_or(&0);
+        let input_demo = demo_source.map(|source| InputDemo { source, skip_until_update });
+        let record_to = matches.get_one::<PathBuf>("write_demo").cloned();
+
+        Args { level_source, input_demo, record_to }
     }
 
     #[cfg(target_family = "wasm")]
     pub fn parse_args_or_die() -> Args {
-        if crate::wasm::is_wasm_demo() {
-            Args::PlayDemo { input_path: None, skip_until_update: 0 }
-        } else if crate::wasm::is_wasm_new_level_demo() {
-            Args::PlayNewLevelDemo
+        use crate::wasm;
+
+        if wasm::is_wasm_demo() {
+            let input_demo = Some(InputDemo { source: DemoSource::Default, skip_until_update: 0 });
+            Args { level_source: LevelSource::Default, input_demo, record_to: None }
+        } else if wasm::is_wasm_new_level_demo() {
+            let input_demo =
+                Some(InputDemo { source: DemoSource::NewLevelDemo, skip_until_update: 0 });
+            Args { level_source: LevelSource::New, input_demo, record_to: None }
         } else {
-            Args::JustPlay { is_new_level: crate::wasm::is_wasm_new_level() }
+            let level_source =
+                if wasm::is_wasm_new_level() { LevelSource::New } else { LevelSource::Default };
+            Args { level_source, ..Default::default() }
         }
     }
 }

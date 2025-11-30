@@ -9,7 +9,7 @@ pub enum Input {
     Shoot,
 }
 
-pub trait InputDevice {
+pub trait InputDevice: core::fmt::Debug {
     fn next_update(&mut self);
 
     /// This value should not change within a single update
@@ -66,6 +66,7 @@ impl InputDevice for MacroquadInput {
 }
 
 /// [`InputDevice`] used to play back a demo movie and then record
+#[derive(Debug)]
 pub struct ComposedInput<A, B> {
     first: A,
     second: B,
