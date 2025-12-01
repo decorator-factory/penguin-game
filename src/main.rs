@@ -155,6 +155,19 @@ struct InputDemo {
     skip_until_update: u64,
 }
 
+impl clap::ValueEnum for game::LevelSource {
+    fn value_variants<'a>() -> &'a [Self] {
+        &[game::LevelSource::Default, game::LevelSource::New]
+    }
+
+    fn to_possible_value(&self) -> Option<clap::builder::PossibleValue> {
+        Some(clap::builder::PossibleValue::new(match self {
+            game::LevelSource::Default => "default",
+            game::LevelSource::New => "new",
+        }))
+    }
+}
+
 mod cli {
     use super::game::LevelSource;
     use super::{
@@ -170,9 +183,11 @@ mod cli {
 
         use clap::{
             Arg,
-            ArgAction,
             Command,
-            builder::ValueParser,
+            builder::{
+                EnumValueParser,
+                ValueParser,
+            },
             value_parser,
         };
 
@@ -194,7 +209,13 @@ mod cli {
                 .long("read-demo")
                 .value_name("@default|path")
                 .value_parser(ValueParser::os_string()))
-            .arg(Arg::new("new_level").long("new-level").action(ArgAction::SetTrue))
+            .arg(
+                Arg::new("level_id")
+                .long("level-id")
+                .value_name("level_id")
+                .default_value("default")
+                .value_parser(EnumValueParser::<LevelSource>::new())
+            )
             .arg(Arg::new("skip_until_update")
                 .long("skip-until-update")
                 .help("When a demo is provided, the game will skip this many ticks, and then set the UPS to 1.")
@@ -203,12 +224,15 @@ mod cli {
                 .default_value("0"))
             .get_matches();
 
-        let is_new_level = *matches.get_one::<bool>("new_level").unwrap_or(&false);
-        let level_source = if is_new_level { LevelSource::New } else { LevelSource::Default };
+        let level_source =
+            matches.get_one::<LevelSource>("level_id").unwrap_or(&LevelSource::Default).clone();
 
         let demo_source = matches.get_one::<OsString>("read_demo").map(|path| {
             if path == "@default" {
-                if is_new_level { DemoSource::NewLevelDemo } else { DemoSource::Default }
+                match level_source {
+                    LevelSource::Default => DemoSource::Default,
+                    LevelSource::New => DemoSource::NewLevelDemo,
+                }
             } else {
                 DemoSource::File(PathBuf::from(path))
             }

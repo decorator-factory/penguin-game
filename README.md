@@ -36,7 +36,7 @@ If you get stuck, see how the demo penguin completes a level.
 
 ```
 penguin-game \
-    [--new-level]
+    [--level-id <default|new>]
     [--read-demo <@default|path> [--skip-until-update <u64>]]
     [--write-demo <path>]
 ```
@@ -61,7 +61,7 @@ penguin-game \
     ```
 
 - `penguin-game --read-demo movie1.demo --write-demo movie2.demo`
-    starts out playing the demo movie in `movie1.demo`, and when it's done, records a new demo movie and puts that into `movie2.demo`. This allows you to record complicated demos in multiple sittings. I'm very bad at videogames, so all the demos in the `demos/` are 
+    starts out playing the demo movie in `movie1.demo`, and when it's done, records a new demo movie and puts that into `movie2.demo`. This allows you to record complicated demos in multiple sittings. I'm very bad at videogames, so all the demos in the `demos/` are
     constructed using some amount of "demo surgery" where one tweaks certain inputs, stitches together different demos, or removes
     sections where one made embarrassing mistakes.
 

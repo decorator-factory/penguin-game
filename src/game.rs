@@ -36,7 +36,7 @@ const STATUS_TTL_MAX: u16 = 360;
 const STATUS_TTL_FADE_BEGIN: u16 = 180;
 const _: () = assert!(STATUS_TTL_FADE_BEGIN < STATUS_TTL_MAX, "");
 
-#[derive(Default, Debug)]
+#[derive(Default, Clone, Debug)]
 pub enum LevelSource {
     #[default]
     Default,
