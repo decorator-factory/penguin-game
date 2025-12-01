@@ -1,0 +1,7 @@
+// Copy this to settings.json and adjust to your requirements
+{
+    "rust-analyzer.rustfmt.extraArgs": ["+nightly"],
+
+    // Uncomment if you want rust-analyzer to understand WASM code
+    // "rust-analyzer.cargo.target": "wasm32-unknown-unknown"
+}
