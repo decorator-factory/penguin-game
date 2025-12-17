@@ -1,0 +1,23 @@
+# adapted from https://doc.rust-lang.org/stable/clippy/continuous_integration/github_actions.html
+name: Clippy check
+on:
+  push:
+    branches:
+      - trunk
+
+  workflow_dispatch:
+
+env:
+  RUSTFLAGS: "-Dwarnings"
+
+jobs:
+  clippy_check:
+    runs-on: ubuntu-latest
+    env:
+      - RUST_TARGET=${{ matrix.rust_target }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Clippy (linux)
+        run: cargo clippy --target x86_64-unknown-linux-gnu
+      - name: Clippy (wasm32)
+        run: cargo clippy --target wasm32-unknown-unknown
