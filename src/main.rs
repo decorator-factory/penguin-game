@@ -155,7 +155,6 @@ struct InputDemo {
     skip_until_update: u64,
 }
 
-#[cfg(not(target_family = "wasm"))]
 impl clap::ValueEnum for game::LevelSource {
     fn value_variants<'a>() -> &'a [Self] {
         &[game::LevelSource::Default, game::LevelSource::New]
