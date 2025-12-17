@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    rc::Rc,
+};
 
 use glam::{
     Vec2,
@@ -66,13 +69,12 @@ impl Graphic {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub enum TriggerKind {
     Panic,
     Hello,
-    DebugText(&'static str),
-    ShowText(&'static str),
+    ShowText(Rc<str>),
     SetEyepatch(bool),
     Goto(Vec2, StatusIcon),
 }
@@ -113,7 +115,7 @@ impl Level {
         for index in self.triggers_bvh.intersect_aabb(&aabb) {
             let (kind, poly) = &self.triggers[index as usize];
             if intersection_test_ball_point_query(&ball_pos_inv, &ball, poly) {
-                rv.push((*kind, poly));
+                rv.push((kind.clone(), poly));
             }
         }
         rv
@@ -164,7 +166,7 @@ impl LevelBuilder {
         }
     }
 
-    pub fn lookup_texture_or_die(&self, name: &'static str) -> Texture2D {
+    fn lookup_texture_or_die(&self, name: &str) -> Texture2D {
         self.textures
             .get(name)
             .unwrap_or_else(|| panic!("Unknown texture referenced: {name}"))

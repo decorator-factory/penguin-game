@@ -4,6 +4,7 @@ use std::{
         VecDeque,
     },
     fmt::Write,
+    rc::Rc,
 };
 
 use macroquad::prelude::*;
@@ -41,6 +42,7 @@ pub enum LevelSource {
     #[default]
     Default,
     New,
+    ParseTest,
 }
 
 pub async fn run_game(
@@ -52,6 +54,7 @@ pub async fn run_game(
     let level = match level_source {
         LevelSource::Default => build_default_level(builder),
         LevelSource::New => crate::generated_levels::level_test::build(builder),
+        LevelSource::ParseTest => crate::raw_level::make_test_raw_level().build(builder),
     };
     let mut state = GameState::new(level);
 
@@ -181,9 +184,19 @@ struct Explosion {
 
 #[derive(Clone, Debug)]
 struct Tooltip {
-    text: &'static str,
+    text: Option<Rc<str>>,
     ttl: u16,
     origin: Vec2,
+}
+
+impl Tooltip {
+    /// Get shared reference to text (empty if text is missing)
+    fn text(&self) -> &str {
+        match &self.text {
+            Some(rc) => rc,
+            None => "",
+        }
+    }
 }
 
 struct GameState {
@@ -226,7 +239,7 @@ impl GameState {
             rockets: Vec::with_capacity(32),
             explosions: Vec::with_capacity(32),
             debug_strings: Vec::with_capacity(16),
-            tooltip: Tooltip { text: "", ttl: 0, origin: vec2(0.0, 0.0) },
+            tooltip: Tooltip { text: None, ttl: 0, origin: vec2(0.0, 0.0) },
         }
     }
 }
@@ -565,14 +578,11 @@ mod updates {
                 crate::levels::TriggerKind::Hello => {
                     state.debug_strings.push(format!("Hello from {poly:?}"));
                 }
-                crate::levels::TriggerKind::DebugText(text) => {
-                    state.debug_strings.push(format!("\nDebugText:\n{text}"));
-                }
                 crate::levels::TriggerKind::ShowText(text) => {
                     let center_x = parry2d::utils::center(poly.points()).x;
                     let min_y = poly.points().iter().map(|p| p.y).min_by(f32::total_cmp).unwrap();
 
-                    state.tooltip.text = text;
+                    state.tooltip.text = Some(text);
                     state.tooltip.origin = vec2(center_x, min_y);
                     state.tooltip.ttl =
                         (state.tooltip.ttl + TOOLTIP_TTL_GROW_RATE).min(TOOLTIP_TTL_MAX);
@@ -681,6 +691,7 @@ mod graphics {
 
     fn draw_tooltip(tooltip: &Tooltip, penguin: &Penguin) {
         const FONT_SIZE: u16 = 32;
+        let text = tooltip.text();
 
         if tooltip.ttl == 0 {
             return;
@@ -691,7 +702,7 @@ mod graphics {
         let default_anchor = tooltip.origin - vec2(0.0, 4.0);
 
         // `measure_text` doesn't handle multiline text. Argh!
-        let text_dims = measure_multiline_text(tooltip.text, FONT_SIZE);
+        let text_dims = measure_multiline_text(text, FONT_SIZE);
         let padding = vec2(6.0, 6.0);
 
         let compute_pos_and_wh = |anchor| {
@@ -723,7 +734,7 @@ mod graphics {
 
         draw_rounded_rect(top_left, dimensions, 6.0, WHITE.with_alpha(alpha));
         draw_multiline_text(
-            tooltip.text,
+            text,
             top_left.x + padding.x,
             top_left.y + padding.y + text_dims.offset_y,
             f32::from(FONT_SIZE),

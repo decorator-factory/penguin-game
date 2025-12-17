@@ -4,6 +4,7 @@ use crate::input::{
     Input,
     InputDevice,
 };
+use crate::text_utils::split_while;
 use enumset::EnumSet;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -241,26 +242,6 @@ pub enum DemoParseErrorDetail {
     UpdateNumberDecreased,
 }
 
-fn expect_keyword<'src>(source: &'src [u8], prefix: &[u8]) -> Option<&'src [u8]> {
-    source.starts_with(prefix).then(||
-        // SAFETY: if source starts with prefix, it must be at least that long
-        unsafe { source.get_unchecked(prefix.len()..) })
-}
-
-fn split_while<T, F>(slice: &[T], mut pred: F) -> (&[T], &[T])
-where
-    F: FnMut(&T) -> bool,
-{
-    if slice.is_empty() {
-        return (slice, slice);
-    }
-
-    match slice.iter().position(|x| !pred(x)) {
-        Some(index) => (&slice[..index], &slice[index..]),
-        None => (slice, &slice[slice.len()..]),
-    }
-}
-
 #[allow(dead_code)]
 pub fn unparse_movie_to_string(movie: &DemoMovie) -> String {
     let mut buf = Vec::with_capacity(1 << 10);
@@ -295,7 +276,7 @@ pub fn parse_movie(source: &[u8]) -> Result<DemoMovie, DemoParseError> {
     // if this gets any more complicated, look into `nom` or other parsing libraries
     use DemoParseErrorDetail as E;
 
-    let Some(source) = expect_keyword(source, b"penguindemo-text-v0\n") else {
+    let Some(source) = source.strip_prefix(b"penguindemo-text-v0\n") else {
         return Err(DemoParseError {
             lineno: 1,
             colno: 1,
@@ -325,7 +306,7 @@ pub fn parse_movie(source: &[u8]) -> Result<DemoMovie, DemoParseError> {
             Err(DemoParseError { lineno, colno, detail })
         };
 
-        let Some(line) = expect_keyword(line, b"at") else {
+        let Some(line) = line.strip_prefix(b"at") else {
             return wrap_err(line, E::InvalidSyntax("Expected 'at' keyword"));
         };
         if !line.starts_with(b" ") {
@@ -352,7 +333,7 @@ pub fn parse_movie(source: &[u8]) -> Result<DemoMovie, DemoParseError> {
             return wrap_err(line, E::InvalidSyntax("number is too large"));
         }
 
-        let Some(line) = expect_keyword(line, b":") else {
+        let Some(line) = line.strip_prefix(b":") else {
             return wrap_err(line, E::InvalidSyntax("expected colon (:)"));
         };
         let line = line.trim_ascii_start();
@@ -392,11 +373,11 @@ fn try_parse_action(line: &[u8]) -> Result<(&[u8], DemoAction), (&[u8], DemoPars
         Look,
     }
 
-    let (kw, line) = if let Some(line) = expect_keyword(line, b"on") {
+    let (kw, line) = if let Some(line) = line.strip_prefix(b"on") {
         (Kw::On, line)
-    } else if let Some(line) = expect_keyword(line, b"off") {
+    } else if let Some(line) = line.strip_prefix(b"off") {
         (Kw::Off, line)
-    } else if let Some(line) = expect_keyword(line, b"look") {
+    } else if let Some(line) = line.strip_prefix(b"look") {
         (Kw::Look, line)
     } else {
         return Err((line, E::InvalidSyntax("expected 'on', 'off', or 'look'")));
@@ -439,11 +420,11 @@ fn try_parse_action(line: &[u8]) -> Result<(&[u8], DemoAction), (&[u8], DemoPars
 }
 
 fn try_parse_input(line: &[u8]) -> Option<(&[u8], Input)> {
-    if let Some(line) = expect_keyword(line, b"left") {
+    if let Some(line) = line.strip_prefix(b"left") {
         Some((line, Input::Left))
-    } else if let Some(line) = expect_keyword(line, b"right") {
+    } else if let Some(line) = line.strip_prefix(b"right") {
         Some((line, Input::Right))
-    } else if let Some(line) = expect_keyword(line, b"shoot") {
+    } else if let Some(line) = line.strip_prefix(b"shoot") {
         Some((line, Input::Shoot))
     } else {
         None
@@ -465,13 +446,16 @@ pub fn make_new_level_demo_movie() -> DemoMovie {
         .unwrap_or_else(|e| panic!("the demo movie in '../demos/new_level.demo' is malformed: {e}"))
 }
 
+pub fn make_new_empty_demo() -> DemoMovie {
+    DemoMovie::new(Box::new([]))
+}
+
 //-----
 
 #[cfg(test)]
 mod parse_tests {
     use crate::demo::{
         DemoAction,
-        expect_keyword,
         split_while,
     };
     use crate::input::Input;
@@ -498,21 +482,6 @@ mod parse_tests {
     pub fn split_while_mixed() {
         let (left, right) = split_while(b"aaaabcd", |c| *c == b'a');
         assert_eq!((left, right), (&b"aaaa"[..], &b"bcd"[..]));
-    }
-
-    #[test]
-    pub fn expect_keyword_ok() {
-        assert_eq!(Some(&b" banana"[..]), expect_keyword(b"apple banana", b"apple"));
-    }
-
-    #[test]
-    pub fn expect_keyword_fail() {
-        assert_eq!(None, expect_keyword(b"apple banana", b"cherry"));
-    }
-
-    #[test]
-    pub fn expect_keyword_fail_empty_source() {
-        assert_eq!(None, expect_keyword(b"", b"cherry"));
     }
 
     #[test]

@@ -17,7 +17,10 @@ mod draw_utils;
 mod game;
 mod generated_levels;
 mod input;
+mod level_parsing;
 mod levels;
+mod raw_level;
+mod text_utils;
 mod wasm;
 
 fn main() {
@@ -92,6 +95,7 @@ fn fetch_demo(source: DemoSource) -> Result<demo::DemoMovie, String> {
     match source {
         DemoSource::Default => Ok(demo::make_default_demo_movie()),
         DemoSource::NewLevelDemo => Ok(demo::make_new_level_demo_movie()),
+        DemoSource::Empty => Ok(demo::make_new_empty_demo()),
         DemoSource::File(path) => try_read_demo_movie(&path),
     }
 }
@@ -146,6 +150,8 @@ enum DemoSource {
     Default,
     NewLevelDemo,
     #[cfg_attr(target_family = "wasm", expect(dead_code))]
+    Empty,
+    #[cfg_attr(target_family = "wasm", expect(dead_code))]
     File(PathBuf),
 }
 
@@ -157,13 +163,14 @@ struct InputDemo {
 
 impl clap::ValueEnum for game::LevelSource {
     fn value_variants<'a>() -> &'a [Self] {
-        &[game::LevelSource::Default, game::LevelSource::New]
+        &[game::LevelSource::Default, game::LevelSource::New, game::LevelSource::ParseTest]
     }
 
     fn to_possible_value(&self) -> Option<clap::builder::PossibleValue> {
         Some(clap::builder::PossibleValue::new(match self {
             game::LevelSource::Default => "default",
             game::LevelSource::New => "new",
+            game::LevelSource::ParseTest => "parse-test",
         }))
     }
 }
@@ -232,6 +239,7 @@ mod cli {
                 match level_source {
                     LevelSource::Default => DemoSource::Default,
                     LevelSource::New => DemoSource::NewLevelDemo,
+                    LevelSource::ParseTest => DemoSource::Empty,
                 }
             } else {
                 DemoSource::File(PathBuf::from(path))
