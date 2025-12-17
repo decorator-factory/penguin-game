@@ -766,15 +766,17 @@ mod graphics {
     }
 
     const PENGUINGRAY: Color = Color::new(0.12, 0.12, 0.22, 1.0);
-    const PENGUINGRAY_EMPTY: Color = Color::new(0.3, 0.3, 0.4, 1.0);
+    const PENGUINGRAY_EMPTY: Color = Color::new(0.4, 0.4, 0.5, 0.8);
     const DARKRED: Color = Color::new(0.7, 0.0, 0.2, 1.0);
 
     fn draw_penguin(penguin: &Penguin, eyes_dir: Vec2, any_rockets: bool) {
-        const RAD: f32 = PENGUIN_RADIUS;
-        let Penguin { pos, vel, fuel, has_eyepatch, status, status_ttl, .. } = penguin;
+        #[expect(clippy::float_cmp_const)]
+        const {
+            assert!(PENGUIN_RADIUS == 24.0, "");
+        }
 
+        let Penguin { pos, vel, fuel, has_eyepatch, status, status_ttl, .. } = penguin;
         let (cx, cy) = (pos.x, pos.y);
-        let fill_fraction = f32::from(*fuel) / f32::from(super::FUEL_MAX);
 
         // Draw trail when moving at high speed
         if vel.length() > 1.8 {
@@ -786,45 +788,51 @@ mod graphics {
                 draw_circle_lines(
                     dpos.x,
                     dpos.y,
-                    RAD * 0.5 + RAD * 0.4 * fade_factor,
+                    12.0 + 10.0 * fade_factor,
                     1.0,
                     WHITE.with_alpha(fade_factor * 0.3),
                 );
             }
         }
-        draw_circle(cx, cy, RAD, PENGUINGRAY_EMPTY);
-        draw_circle(cx, cy, RAD / 1.5, PENGUINGRAY);
-        draw_vclipped_circle(cx, cy, RAD, fill_fraction, PENGUINGRAY);
-        draw_circle_lines(cx, cy, RAD - 2.0, 2.0, PENGUINGRAY);
 
-        draw_ellipse(cx, cy + RAD * 0.4, RAD * 0.65, RAD * 0.4, 0.0, LIGHTGRAY);
-        draw_rectangle(cx - RAD * 0.6, cy - RAD * 0.2, RAD * 1.2, RAD * 0.4, PENGUINGRAY);
+        // Draw body
+        {
+            let fill_fraction = f32::from(*fuel) / f32::from(super::FUEL_MAX);
+            draw_circle(cx, cy, 24.0, PENGUINGRAY_EMPTY);
+            draw_circle(cx, cy, 16.0, PENGUINGRAY);
+            draw_vclipped_circle(cx, cy, 24.0, fill_fraction, PENGUINGRAY);
+            draw_circle_lines(cx, cy, 22.0, 2.0, PENGUINGRAY);
 
-        // All about eyes:
+            draw_ellipse(cx, cy + 10.0, 16.0, 10.0, 0.0, LIGHTGRAY);
+            draw_rectangle(cx - 14.0, cy - 5.0, 27.0, 10.0, PENGUINGRAY);
+        }
+
+        // Draw eyes and eyepatch
         {
             let look = eyes_dir * 2.5;
-            let [vx, vy] = (vel.clamp_length_max(16.0) * 0.0125 * RAD).round().to_array();
+            let [vx, vy] = (vel.clamp_length_max(16.0) * 0.0125 * 24.0).round().to_array();
 
-            draw_circle(cx - RAD * 0.3 - vx, cy - RAD * 0.2 - vy, 5., WHITE);
-            draw_circle(cx - RAD * 0.3 - vx + look.x, cy - RAD * 0.2 + look.y - vy, 2., BLACK);
+            draw_circle(cx - 7.0 - vx, cy - 6.0 - vy, 5., WHITE);
+            draw_circle(cx - 7.0 - vx + look.x, cy - 6.0 + look.y - vy, 2., BLACK);
             if *has_eyepatch {
                 let color = if any_rockets { RED } else { DARKRED };
-                let [px, py] = vec2(cx + RAD * 0.3 - vx, cy - RAD * 0.2 - vy).to_array();
+                let [px, py] = vec2(cx + 7.0 - vx, cy - 5.0 - vy).to_array();
                 draw_circle(px, py, 6., color);
-                draw_line(px, py, px - RAD * 0.7, py - RAD * 0.7, 5.0, color);
-                draw_line(px, py, px + RAD * 0.7, py + RAD * 0.3, 5.0, color);
+                draw_line(px, py, px - 16.0, py - 16.0, 5.0, color);
+                draw_line(px, py, px + 16.0, py + 7.0, 5.0, color);
             } else {
-                draw_circle(cx + RAD * 0.3 - vx, cy - RAD * 0.2 - vy, 5., WHITE);
-                draw_circle(cx + RAD * 0.3 - vx + look.x, cy - RAD * 0.2 + look.y - vy, 2., BLACK);
+                draw_circle(cx + 7.0 - vx, cy - 6.0 - vy, 5., WHITE);
+                draw_circle(cx + 7.0 - vx + look.x, cy - 6.0 + look.y - vy, 2., BLACK);
             }
         }
 
-        draw_status_icon(*pos - vec2(0.0, RAD + 5.0), *status_ttl, *status);
+        draw_status_icon(*pos - vec2(0.0, 29.0), *status_ttl, *status);
 
+        // Beak
         draw_triangle(
-            vec2(cx - RAD / 2.5, cy + RAD * 0.15),
-            vec2(cx + RAD / 2.5, cy + RAD * 0.15),
-            vec2(cx, cy + RAD * 0.5),
+            vec2(cx - 10.0, cy + 4.0),
+            vec2(cx + 10.0, cy + 4.0),
+            vec2(cx, cy + 12.0),
             ORANGE,
         );
     }

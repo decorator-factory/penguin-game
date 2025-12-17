@@ -26,7 +26,7 @@ fn main() {
         window_width: 1280,
         window_height: 720,
         window_resizable: true,
-        sample_count: 2,
+        sample_count: 4,
         high_dpi: true,
         ..Default::default()
     };
