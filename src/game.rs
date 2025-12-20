@@ -42,6 +42,7 @@ pub enum LevelSource {
     #[default]
     Default,
     New,
+    RawTest,
     ParseTest,
 }
 
@@ -54,7 +55,13 @@ pub async fn run_game(
     let level = match level_source {
         LevelSource::Default => build_default_level(builder),
         LevelSource::New => crate::generated_levels::level_test::build(builder),
-        LevelSource::ParseTest => crate::raw_level::make_test_raw_level().build(builder),
+        LevelSource::ParseTest => {
+            // NOTE: this will panic, because we don't have "banana" and "ban" textures
+            crate::level_parsing::parse(crate::level_parsing::EXAMPLE_LEVEL_SRC)
+                .unwrap()
+                .build(builder)
+        }
+        LevelSource::RawTest => crate::raw_level::make_test_raw_level().build(builder),
     };
     let mut state = GameState::new(level);
 
@@ -791,7 +798,7 @@ mod graphics {
 
         // Draw trail when moving at high speed
         if vel.length() > 1.8 {
-            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            #[allow(clippy::cast_sign_loss)]
             let steps = ((vel.length() - 1.5) / 0.33).min(100.0) as u16;
             for i in 0..steps {
                 let fade_factor = 1. - f32::from(i) / f32::from(steps);
@@ -973,8 +980,12 @@ fn build_default_level(mut builder: levels::LevelBuilder) -> levels::Level {
     let level_height: f32 = 12000.0;
 
     // Invisible walls
-    builder.rect(None, vec2(-24.0, -level_height), vec2(24.0, level_height));
-    builder.rect(None, vec2(level_width, -level_height), vec2(24.0, level_height));
+    builder.rect(Option::<Rc<str>>::None, vec2(-24.0, -level_height), vec2(24.0, level_height));
+    builder.rect(
+        Option::<Rc<str>>::None,
+        vec2(level_width, -level_height),
+        vec2(24.0, level_height),
+    );
 
     // Arrow floor
     builder.rect(Some("arrow_left"), vec2(0.0, 0.0), vec2(level_width, 32.0));

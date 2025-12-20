@@ -10,28 +10,26 @@ use glam::{
     vec2,
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Shape {
     Rect { pos: Vec2, size: Vec2 },
     Polygon(Box<[Vec2]>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Graphic {
     pub shape: Shape,
-    /// Index into the `textures` field
-    pub texture_index: u8,
+    pub texture: Rc<str>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Trigger {
     pub shape: Shape,
     pub kind: TriggerKind,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RawLevel {
-    pub textures: Box<[Box<str>]>,
     pub start_pos: Vec2,
     pub graphics: Box<[Graphic]>,
     pub colliders: Box<[Shape]>,
@@ -42,28 +40,31 @@ impl RawLevel {
     pub fn build(self, mut builder: crate::levels::LevelBuilder) -> crate::levels::Level {
         builder.level_start(self.start_pos);
 
-        let textures: Vec<&'static str> =
-            self.textures.into_iter().map(|s| &*Box::leak(s)).collect(); // TODO: don't leak stuff
+        for graphic in &self.graphics {
+            match &graphic.shape {
+                Shape::Rect { pos, size } => {
+                    builder.rect_graphics(Rc::clone(&graphic.texture), *pos, *size);
+                }
 
-        for graphic in self.graphics {
-            let texture = textures[graphic.texture_index as usize]; // TODO: where do we validate texture indices?
-            match graphic.shape {
-                Shape::Rect { pos, size } => builder.rect_graphics(texture, pos, size),
-                Shape::Polygon(points) => builder.polygon_graphics(texture, &points),
+                Shape::Polygon(points) => {
+                    builder.polygon_graphics(Rc::clone(&graphic.texture), points);
+                }
             }
         }
 
-        for shape in self.colliders {
+        for shape in &self.colliders {
             match shape {
-                Shape::Rect { pos, size } => builder.rect(None, pos, size),
-                Shape::Polygon(points) => builder.polygon(None, &points),
+                Shape::Rect { pos, size } => builder.rect(Option::<Rc<str>>::None, *pos, *size),
+                Shape::Polygon(points) => builder.polygon(Option::<Rc<str>>::None, points),
             }
         }
 
-        for trigger in self.triggers {
-            match trigger.shape {
-                Shape::Rect { pos, size } => builder.rect_trigger(trigger.kind, pos, size),
-                Shape::Polygon(points) => builder.polygon_trigger(trigger.kind, &points),
+        for trigger in &self.triggers {
+            match &trigger.shape {
+                Shape::Rect { pos, size } => {
+                    builder.rect_trigger(trigger.kind.clone(), *pos, *size);
+                }
+                Shape::Polygon(points) => builder.polygon_trigger(trigger.kind.clone(), points),
             }
         }
 
@@ -78,11 +79,10 @@ pub fn make_test_raw_level() -> RawLevel {
     let poly = Shape::Polygon([vec2(200.0, 0.0), vec2(300.0, 0.0), vec2(260.0, -100.0)].into());
 
     RawLevel {
-        textures: ["wood".into(), "bricks".into()].into(),
         start_pos: vec2(0.0, -60.0),
-        graphics: [Graphic { shape: rect1.clone(), texture_index: 0 }, Graphic {
+        graphics: [Graphic { shape: rect1.clone(), texture: "wood".into() }, Graphic {
             shape: poly.clone(),
-            texture_index: 1,
+            texture: "bricks".into(),
         }]
         .into(),
         colliders: [rect1.clone(), rect2.clone()].into(),

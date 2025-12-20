@@ -69,7 +69,7 @@ impl Graphic {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)]
 pub enum TriggerKind {
     Panic,
@@ -79,8 +79,7 @@ pub enum TriggerKind {
     Goto(Vec2, StatusIcon),
 }
 
-#[derive(Copy, Clone, Debug)]
-#[allow(dead_code)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum StatusIcon {
     Wrong,
     Nice,
@@ -145,10 +144,10 @@ impl Level {
 
 pub struct LevelBuilder {
     textures: HashMap<&'static str, Texture2D>,
-    rects: Vec<(Vec2, Vec2, Option<&'static str>)>,
-    polygons: Vec<(Vec<Vec2>, Option<&'static str>)>,
-    rects_graphics: Vec<(Vec2, Vec2, &'static str)>,
-    polygons_graphics: Vec<(Vec<Vec2>, &'static str)>,
+    rects: Vec<(Vec2, Vec2, Option<Rc<str>>)>,
+    polygons: Vec<(Vec<Vec2>, Option<Rc<str>>)>,
+    rects_graphics: Vec<(Vec2, Vec2, Rc<str>)>,
+    polygons_graphics: Vec<(Vec<Vec2>, Rc<str>)>,
     triggers: Vec<(TriggerKind, ConvexPolygon)>,
     level_start: Vec2,
 }
@@ -173,12 +172,12 @@ impl LevelBuilder {
             .clone()
     }
 
-    pub fn polygon(&mut self, texture: Option<&'static str>, points: &[Vec2]) {
-        self.polygons.push((points.to_vec(), texture));
+    pub fn polygon(&mut self, texture: Option<impl Into<Rc<str>>>, points: &[Vec2]) {
+        self.polygons.push((points.to_vec(), texture.map(Into::into)));
     }
 
-    pub fn rect(&mut self, texture: Option<&'static str>, xy: Vec2, wh: Vec2) {
-        self.rects.push((xy, wh, texture));
+    pub fn rect(&mut self, texture: Option<impl Into<Rc<str>>>, xy: Vec2, wh: Vec2) {
+        self.rects.push((xy, wh, texture.map(Into::into)));
     }
 
     pub fn rect_trigger(&mut self, action: TriggerKind, xy: Vec2, wh: Vec2) {
@@ -187,12 +186,12 @@ impl LevelBuilder {
         self.polygon_trigger(action, &points);
     }
 
-    pub fn polygon_graphics(&mut self, texture: &'static str, points: &[Vec2]) {
-        self.polygons_graphics.push((points.to_vec(), texture));
+    pub fn polygon_graphics(&mut self, texture: impl Into<Rc<str>>, points: &[Vec2]) {
+        self.polygons_graphics.push((points.to_vec(), texture.into()));
     }
 
-    pub fn rect_graphics(&mut self, texture: &'static str, xy: Vec2, wh: Vec2) {
-        self.rects_graphics.push((xy, wh, texture));
+    pub fn rect_graphics(&mut self, texture: impl Into<Rc<str>>, xy: Vec2, wh: Vec2) {
+        self.rects_graphics.push((xy, wh, texture.into()));
     }
 
     pub fn level_start(&mut self, point: Vec2) {
@@ -272,7 +271,6 @@ impl LevelBuilder {
             Bvh::from_iter(BvhBuildStrategy::Ploc, aabbs.enumerate())
         };
 
-        #[expect(clippy::cast_possible_truncation)]
         Level {
             rect_colliders,
             poly_colliders,

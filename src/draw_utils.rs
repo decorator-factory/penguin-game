@@ -77,7 +77,6 @@ pub fn draw_textured_poly(points: &[Vec2], opts: &DrawOpts) {
         let (u, v) = (point.x / texture.width(), point.y / texture.height());
         vertices.push(Vertex::new(point.x, point.y, 0., u, v, *color));
 
-        #[expect(clippy::cast_possible_truncation, reason = "see debug_assert")]
         if i != 0 && i != points.len() - 1 {
             indices.extend_from_slice(&[0, i as u16, i as u16 + 1]);
         }

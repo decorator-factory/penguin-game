@@ -96,7 +96,7 @@ def maybe_texture_expr(obj: dict[str, Any]) -> str:
             if value in {"none", ""}:
                 break
             return f'Some("{value}")'
-    return "None"
+    return "Option::<Rc<str>>::None"
 
 
 def vec_expr(x: float, y: float) -> str:

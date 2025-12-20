@@ -9,13 +9,9 @@ magic_header.
 offset_table.
 level_start.
 strings.
-shape_defs/
-    rects.
-    polygons.
-obj_defs/
-    graphics.
-    colliders.
-    triggers.
+obj_defs/graphics.
+obj_defs/colliders.
+obj_defs/triggers.
 ```
 
 All the numbers are stored in little-endian order.
@@ -31,13 +27,11 @@ Every entry is a `u32` decsribing an offset, and a `u32` descirbing the size, in
 
 Structure:
 ```
-u16      # the number of sections (always 7)
+u16      # the number of sections (always 5)
 
 # offset, size
 u32 u32  # entry for `level_start`  (size always 8)
 u32 u32  # entry for `strings`
-u32 u32  # entry for `shape_defs/rects`
-u32 u32  # entry for `shape_defs/polygons`
 u32 u32  # entry for `obj_defs/graphics`
 u32 u32  # entry for `obj_defs/colliders`
 u32 u32  # entry for `obj_defs/triggers`
@@ -45,7 +39,7 @@ u32 u32  # entry for `obj_defs/triggers`
 
 ## 3. `level_start`
 
-The position of penguin where the game starts
+The position of penguin where the game starts. Always 8 bytes long.
 
 Structure:
 ```
@@ -63,56 +57,26 @@ Structure:
 ```
 u16  # number of entries
 # offset, length; -- offset is calculated relative to the start of the buffer
-u32 u16 <0u16>  # entry 0
-u32 u16 <0u16>  # entry 1
-u32 u16 <0u16>  # entry 2
+u32 u32  # entry 0
+u32 u32  # entry 1
+u32 u32  # entry 2
 ...
 
 u8...  # the buffer, starts right after the last entry
 ```
 
-## 5. `shape_defs/`
-
-The `shape_defs/rects` and `shape_defs/polygons` sections define the abstract shapes that can be used by objects.
-
-### 5.1. `shape_defs/rects`
-
-Structure:
-```
-u16  # number of rects (at most 32768)
-
-f32 f32 f32 f32  # x0 y0 w0 h0
-f32 f32 f32 f32  # x1 y1 w1 h1
-...
-```
-
-### 5.2. `shape_defs/polygons`
-
-Since polygons can have a variable number of points, this is conceptually similar to the `strings` section.
-However, the offset and the length are specified as the number of 8-byte points
-
-Structure:
-```
-u16  # number of polygons (at most 32768)
-# offset, length; -- offset is calculated relative to the start of the buffer
-u32 u8 <0u24>  # entry 0
-u32 u8 <0u24>  # entry 1
-u32 u8 <0u24>  # entry 2
-...
-
-# the buffer, starts right after the last entry:
-f32 f32  # (x0, y0)
-f32 f32  # (x1, y1)
-...
-```
-
 ## 6. `obj_defs/`
 
-Objects will refer to a previously defined shape using a `u16` identifier. If the top bit of the identifier
-is `0`, then it is a rect, otherwise it is a polygon (with the lower 15 bits used to index it). This format
-will be referred to as `S16`.
+Objects define a shape that is either a rectangle or a polygon. A shape is 16 bytes long.
 
-Objects
+- Rectangle: `x(f32) y(f32) w(f32) h(f32)`
+- Polygon: `0xFFFF_FFFF(u32) string(u16) <padding>`
+
+A polygon referes to a string, whose length must be divisible by 4 (since a `f32` is 4 bytes long).
+
+`0xffff_ffff` happens to be a NaN, which isn't a useful `x` value anyway.
+
+This shape will be referred to as `Shp`.
 
 ## 6.1. `obj_defs/graphics`
 
@@ -121,7 +85,7 @@ Structure:
 u16  # number of entries
 
 # each entry is:
-S16 u16  # shape, texture (as string ID)
+Shp u16  # shape, texture (as string ID)
 ...
 ```
 
@@ -132,7 +96,7 @@ Structure:
 u16  # number of entries
 
 # each entry is:
-S16  # just the shape
+Shp  # just the shape
 ...
 ```
 
@@ -148,50 +112,53 @@ Triggers are more complex because they accept a "trigger kind" with varying para
 - Goto((x: f32, y: f32), StatusIcon),
 ```
 
-A trigger kind is represented as a 15-byte structure in the following way:
+A trigger kind is represented as a 16-byte structure in the following way:
 
 - `Panic`: `0x00 ?...`
 - `Hello`: `0x01 ?...`
 - `ShowText`: `0x02 string_id(u16) ?...`
-- `SetEyepatch`: `0x03 enable(u16) ?...` (must be either 0 or 1)
+- `SetEyepatch`: `0x03 enable(u8) ?...` (must be either 0 or 1)
 - `Goto`: `0x04 x(f32) y(f32) status(u8) ?...` (status is either 0 (warning sign) or 1 (checkmark))
 
 Structure:
 ```
 u16  # number of entries
 
-# each entry (16 bytes) is:
-S16 TriggerKind
+# each entry (32 bytes) is:
+Shp TriggerKind
 ...
 ```
 
-## Example 0. Smallest possible level
+
+## Example: empty level (hex)
 
 ```
-# magic_header
-70 65 6e 67 75 69 6e 6c 65 76 65 6c 2d 62 69 6e 2d 76 30 0a
-# offset_table
-07 00
-32 00  08 00  # entry for `level_start`
-3a 00  02 00  # entry for `strings`
-3c 00  02 00  # entry for `shape_defs/rects`
-3e 00  02 00  # entry for `shape_defs/polygons`
-40 00  02 00  # entry for `obj_defs/graphics`
-42 00  02 00  # entry for `obj_defs/colliders`
-44 00  02 00  # entry for `obj_defs/triggers`
-# level_start
-00 00 00 00  # start x = 0.0
-00 00 00 00  # start y = 0.0
-# strings
-00 00
-# shape_defs/rects
-00 00
-# shape_defs/polygons
-00 00
-# obj_defs/graphics
-00 00
-# obj_defs/colliders
-00 00
-# obj_defs/triggers
-00 00
+70656e6775696e6c6576656c2d62696e2d76300a05002a000800320002003400
+0200360002003800020000000000000000000000000000000000
+```
+
+## Example: non-empty level (hex)
+
+This level contains:
+
+- 4 strings (including a polygon, an empty string and overlapping strings)
+- 2 graphics (1 rectangle and 1 polygon)
+- 3 colliders (2 rectangles and 1 polygon)
+- 7 triggers (1 Panic, 1 Hello, 1 ShowText, 2 SetEyepatch, 2 Goto)
+
+```
+70656e6775696e6c6576656c2d62696e2d76300a05002a000800320048007a00
+2600a0003200d200e20000002842a4709dbf0400000000000000000000000000
+200000002000000006000000200000000300000000000000cdcccc3d66664640
+cdcc8cbf000080403333a340a4707d3fcdccdc4062616e616e6102000000803f
+0000004000004040000080400200ffffffff0100000000000000000000000300
+03000000803f0000004000004040000080400000a0400000c0400000e0400000
+0041ffffffff01000000000000000000000007000000803f0000004000004040
+00008040000000000000000000000000000000000000a0400000c0400000e040
+00000041010000000000000000000000000000000000803f0000004000004040
+0000804002020000000000000000000000000000ffffffff0100000000000000
+00000000030100000000000000000000000000000000803f0000004000004040
+00008040030000000000000000000000000000000000803f0000004000004040
+00008040040000f64200009040000000000000000000a0400000c0400000e040
+00000041040000f6420000904001000000000000
 ```

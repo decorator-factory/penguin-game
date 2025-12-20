@@ -454,10 +454,7 @@ pub fn make_new_empty_demo() -> DemoMovie {
 
 #[cfg(test)]
 mod parse_tests {
-    use crate::demo::{
-        DemoAction,
-        split_while,
-    };
+    use crate::demo::DemoAction;
     use crate::input::Input;
 
     use super::{
@@ -465,24 +462,6 @@ mod parse_tests {
         DemoParseErrorDetail,
         parse_movie,
     };
-
-    #[test]
-    pub fn split_while_empty() {
-        let (left, right) = split_while(b"aaaabcd", |c| *c == b'?');
-        assert_eq!((left, right), (&b""[..], &b"aaaabcd"[..]));
-    }
-
-    #[test]
-    pub fn split_while_empty_string() {
-        let (left, right) = split_while(b"", |c| *c == b'?');
-        assert_eq!((left, right), (&b""[..], &b""[..]));
-    }
-
-    #[test]
-    pub fn split_while_mixed() {
-        let (left, right) = split_while(b"aaaabcd", |c| *c == b'a');
-        assert_eq!((left, right), (&b"aaaa"[..], &b"bcd"[..]));
-    }
 
     #[test]
     pub fn wrong_version() {

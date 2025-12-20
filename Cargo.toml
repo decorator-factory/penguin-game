@@ -23,11 +23,14 @@ image = { version = "0.24", default-features = false, features = ["png"] }
 thiserror = "2"
 enumset = "=1.1.10"
 clap = { version = "4.5.53", default-features = false, features = ["std", "help", "usage", "error-context"] }
+bytemuck = { version = "=1.24.0", features = ["derive"] }
+pack1 = { version = "=1.0.0", features = ["bytemuck"] }
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
 redundant_else = "allow"
 similar_names = "allow"
+cast_possible_truncation = "allow"
 
 # Restrictions
 as_underscore = "deny"

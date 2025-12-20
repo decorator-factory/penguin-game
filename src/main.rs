@@ -163,7 +163,12 @@ struct InputDemo {
 
 impl clap::ValueEnum for game::LevelSource {
     fn value_variants<'a>() -> &'a [Self] {
-        &[game::LevelSource::Default, game::LevelSource::New, game::LevelSource::ParseTest]
+        &[
+            game::LevelSource::Default,
+            game::LevelSource::New,
+            game::LevelSource::ParseTest,
+            game::LevelSource::RawTest,
+        ]
     }
 
     fn to_possible_value(&self) -> Option<clap::builder::PossibleValue> {
@@ -171,6 +176,7 @@ impl clap::ValueEnum for game::LevelSource {
             game::LevelSource::Default => "default",
             game::LevelSource::New => "new",
             game::LevelSource::ParseTest => "parse-test",
+            game::LevelSource::RawTest => "raw-test",
         }))
     }
 }
@@ -239,7 +245,7 @@ mod cli {
                 match level_source {
                     LevelSource::Default => DemoSource::Default,
                     LevelSource::New => DemoSource::NewLevelDemo,
-                    LevelSource::ParseTest => DemoSource::Empty,
+                    LevelSource::ParseTest | LevelSource::RawTest => DemoSource::Empty,
                 }
             } else {
                 DemoSource::File(PathBuf::from(path))
