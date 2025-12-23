@@ -47,7 +47,7 @@ pub enum ParseError {
     #[error(
         "section {name} is out of bounds: (offset={1}, length={2})",
         name = section_name(*.0))]
-    SectionOutOfBounds(usize, u16, u16),
+    SectionOutOfBounds(usize, u32, u32),
 
     #[error("in section {name}: {1}", name = section_name(*.0))]
     SectionGeneric(usize, &'static str),
@@ -68,8 +68,8 @@ pub enum ParseError {
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 #[repr(C, packed)]
 struct SectionDesc {
-    offset: U16LE,
-    size: U16LE,
+    offset: U32LE,
+    size: U32LE,
 }
 
 const SEC_LEVEL_START: usize = 0;
@@ -416,12 +416,6 @@ mod consts {
         x.to_bits().to_le_bytes()
     }
 
-    const fn sec16(offset: u16, length: u16) -> [u8; 4] {
-        let [b0, b1] = offset.to_le_bytes();
-        let [b2, b3] = length.to_le_bytes();
-        [b0, b1, b2, b3]
-    }
-
     const fn sec32(offset: u32, length: u32) -> [u8; 8] {
         let [b0, b1, b2, b3] = offset.to_le_bytes();
         let [b4, b5, b6, b7] = length.to_le_bytes();
@@ -455,11 +449,11 @@ mod consts {
         b"penguinlevel-bin-v0\n",
         // offset table
         b"\x05\x00",
-        &sec16(42, 8), // level_start
-        &sec16(50, 2), // strings
-        &sec16(52, 2), // obj_defs/graphics
-        &sec16(54, 2), // obj_defs/colliders
-        &sec16(56, 2), // obj_defs/triggers
+        &sec32(62, 8), // level_start
+        &sec32(70, 2), // strings
+        &sec32(72, 2), // obj_defs/graphics
+        &sec32(74, 2), // obj_defs/colliders
+        &sec32(76, 2), // obj_defs/triggers
         // level_start
         &f32b(0.0), &f32b(0.0),
         // strings
@@ -478,11 +472,11 @@ mod consts {
         b"penguinlevel-bin-v0\n",
         // offset table
         b"\x05\x00",
-        &sec16(42, 8), // level_start
-        &sec16(50, 72), // strings
-        &sec16(122, 38), // obj_defs/graphics
-        &sec16(160, 50), // obj_defs/colliders
-        &sec16(210, 226), // obj_defs/triggers
+        &sec32(62, 8), // level_start
+        &sec32(70, 72), // strings
+        &sec32(142, 38), // obj_defs/graphics
+        &sec32(180, 50), // obj_defs/colliders
+        &sec32(230, 226), // obj_defs/triggers
         // level_start
         &f32b(42.0), &f32b(-1.23),
         // strings
