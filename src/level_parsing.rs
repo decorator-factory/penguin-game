@@ -47,8 +47,8 @@ pub enum ParseError {
     #[error("file too small, expected at least {size} bytes", size = MIN_LEVEL_SRC_SIZE)]
     NotEnoughData,
 
-    #[error("bad offset table size")]
-    BadOffsetTableSize,
+    #[error("bad offset table size: {0}")]
+    BadOffsetTableSize(u16),
 
     #[error(
         "section {name} is out of bounds: (offset={1}, length={2})",
@@ -109,9 +109,11 @@ pub fn parse(src: &[u8]) -> Result<RawLevel, ParseError> {
         return Err(ParseError::MissingHeader);
     };
 
-    let Some(src) = src.strip_prefix(&[SECTION_COUNT as u8, 0]) else {
-        return Err(ParseError::BadOffsetTableSize);
-    };
+    let (offset_count, src) = split_from_bytes::<U16LE>(src);
+    let offset_count = offset_count.get();
+    if offset_count as usize != SECTION_COUNT {
+        return Err(ParseError::BadOffsetTableSize(offset_count));
+    }
     let (section_descs, _) = split_from_bytes::<[SectionDesc; SECTION_COUNT]>(src);
 
     let sections = map_sections(section_descs, base).map_err(|(idx, desc)| {
@@ -435,11 +437,13 @@ fn parse_array<T: bytemuck::AnyBitPattern>(
 
 // constant definitions
 
-#[allow(unused_imports)]
-pub use consts::EMPTY_LEVEL_SRC;
-pub use consts::EXAMPLE_LEVEL_SRC;
-pub use consts::MIN_LEVEL_SRC_SIZE;
+#[allow(unused)]
+pub(crate) use consts::EMPTY_LEVEL_SRC;
+#[allow(unused)]
+pub(crate) use consts::EXAMPLE_LEVEL_SRC;
+pub(crate) use consts::MIN_LEVEL_SRC_SIZE;
 
+#[cfg_attr(not(test), allow(dead_code))]
 mod consts {
     use crate::text_utils::cat;
 
@@ -610,5 +614,32 @@ mod test {
                 kind: TriggerKind::Goto(vec2(123.0, 4.5), StatusIcon::Nice)
             }
         ]);
+    }
+
+    #[test]
+    fn parse_generated_empty_level() {
+        const SRC: &[u8] = include_bytes!("./samples/v0_empty_level.bin");
+        let level = parse(SRC).unwrap();
+        assert_eq!(level, RawLevel {
+            start_pos: vec2(42.0, -1.23),
+            graphics: [].into(),
+            colliders: [].into(),
+            triggers: [].into(),
+        });
+    }
+
+    #[test]
+    fn parse_generated_new_level() {
+        const SRC: &[u8] = include_bytes!("./samples/v0_new_level.bin");
+        let level = parse(SRC).unwrap();
+
+        assert_eq!(level.start_pos, vec2(1524.0, 7260.0));
+        assert_eq!(level.graphics.len(), 184);
+        assert_eq!(level.colliders.len(), 125);
+        assert_eq!(level.triggers.len(), 47);
+        assert_eq!(level.triggers.last().unwrap(), &Trigger {
+            shape: Shape::Rect { pos: vec2(9912.0, 5844.0,), size: vec2(96.0, 24.0,) },
+            kind: TriggerKind::ShowText("to be continued".into()),
+        });
     }
 }

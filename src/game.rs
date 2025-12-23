@@ -56,8 +56,7 @@ pub async fn run_game(
         LevelSource::Default => build_default_level(builder),
         LevelSource::New => crate::generated_levels::level_test::build(builder),
         LevelSource::ParseTest => {
-            // NOTE: this will panic, because we don't have "banana" and "ban" textures
-            crate::level_parsing::parse(crate::level_parsing::EXAMPLE_LEVEL_SRC)
+            crate::level_parsing::parse(include_bytes!("./samples/v0_new_level.bin"))
                 .unwrap()
                 .build(builder)
         }
