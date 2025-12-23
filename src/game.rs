@@ -55,8 +55,6 @@ pub enum LevelSource {
     #[default]
     Default,
     New,
-    RawTest,
-    ParseTest,
 }
 
 pub async fn run_game(
@@ -65,16 +63,16 @@ pub async fn run_game(
     skip_until_update: u64,
 ) {
     let builder = levels::LevelBuilder::new(load_textures());
-    let level = match level_source {
-        LevelSource::Default => build_default_level(builder),
-        LevelSource::New => crate::generated_levels::level_test::build(builder),
-        LevelSource::ParseTest => {
-            crate::level_parsing::parse(include_bytes!("./samples/v0_new_level.bin"))
-                .unwrap()
-                .build(builder)
+    let raw_level = match level_source {
+        LevelSource::Default => {
+            crate::level_parsing::parse(include_bytes!("./levels/default.bin")).unwrap()
         }
-        LevelSource::RawTest => crate::raw_level::make_test_raw_level().build(builder),
+
+        LevelSource::New => {
+            crate::level_parsing::parse(include_bytes!("./levels/new.bin")).unwrap()
+        }
     };
+    let level = raw_level.build(builder);
     let mut state = GameState::new(level);
 
     macroquad::logging::info!("Initialized penguin-game state!");
@@ -985,108 +983,4 @@ fn include_texture((path, png_bytes): (&str, &[u8]), repeating: bool) -> Texture
         ..Default::default()
     });
     Texture2D::from_miniquad_texture(texture_id)
-}
-
-#[inline(never)]
-fn build_default_level(mut builder: levels::LevelBuilder) -> levels::Level {
-    builder.level_start(vec2(240.0, -48.0));
-
-    let level_width: f32 = 6000.0;
-    let level_height: f32 = 12000.0;
-
-    // Invisible walls
-    builder.rect(Option::<Rc<str>>::None, vec2(-24.0, -level_height), vec2(24.0, level_height));
-    builder.rect(
-        Option::<Rc<str>>::None,
-        vec2(level_width, -level_height),
-        vec2(24.0, level_height),
-    );
-
-    // Arrow floor
-    builder.rect(Some("arrow_left"), vec2(0.0, 0.0), vec2(level_width, 32.0));
-
-    // Leftmost helper stump
-    builder.rect(Some("wood"), vec2(160.0, -48.0), vec2(48.0, 48.0));
-
-    // Leftmost house wall
-    builder.rect(Some("bricks"), vec2(0.0, -300.0), vec2(64.0, 300.0));
-    builder.rect(Some("bricks"), vec2(-24.0, -1200.0), vec2(24.0, 1200.0));
-
-    // First bridge platform
-    builder.rect(Some("bricks"), vec2(400.0, -536.0), vec2(432.0, 72.0));
-    // First bridge pillars
-    builder.rect_graphics("bricks_dark", vec2(400.0, -524.0), vec2(48.0, 524.0));
-    builder.rect_graphics("bricks_dark", vec2(592.0, -524.0), vec2(48.0, 524.0));
-    builder.rect_graphics("bricks_dark", vec2(784.0, -524.0), vec2(48.0, 524.0));
-
-    // Second bridge platform
-    builder.rect(Some("bricks"), vec2(1000.0, -742.0), vec2(432.0, 72.0));
-    // Second bridge pillars
-    builder.rect_graphics("bricks_dark", vec2(1000.0, -720.0), vec2(48.0, 720.0));
-    builder.rect_graphics("bricks_dark", vec2(1192.0, -720.0), vec2(48.0, 720.0));
-    builder.rect_graphics("bricks_dark", vec2(1384.0, -720.0), vec2(48.0, 720.0));
-
-    // Third bridge platform
-    builder.rect(Some("bricks"), vec2(1800.0, -792.0), vec2(240.0, 72.0));
-    // Third bridge pillars
-    builder.rect_graphics("bricks_dark", vec2(1800.0, -720.0), vec2(48.0, 720.0));
-    builder.rect_graphics("bricks_dark", vec2(1992.0, -720.0), vec2(48.0, 720.0));
-
-    // Fourth bridge platform
-    builder.rect(Some("bricks"), vec2(2300.0, -990.0), vec2(120.0, 72.0));
-    // Fourth bridge pillars
-    builder.rect_graphics("bricks_dark", vec2(2336.0, -990.0), vec2(48.0, 990.0));
-
-    // Fifth bridge platform
-    builder.rect(Some("bricks"), vec2(1800.0, -1248.0), vec2(432.0, 72.0));
-    // Fifth bridge pillars
-    builder.rect_graphics("bricks_dark", vec2(1800.0, -1248.0), vec2(48.0, 1248.0));
-    builder.rect_graphics("bricks_dark", vec2(2184.0, -1248.0), vec2(48.0, 1248.0));
-
-    // Tower1 walls
-    builder.rect(Some("bricks"), vec2(1800.0, -2350.0), vec2(12.0, 1150.0));
-    builder.rect(Some("bricks"), vec2(2220.0, -2350.0), vec2(12.0, 1010.0));
-
-    // Tower1 crazy ledge
-    builder.rect(Some("bricks"), vec2(1956.0, -2180.0), vec2(120.0, 12.0));
-
-    // Tower1 teeny weeny legs
-    builder.rect(Some("bricks"), vec2(1778.0, -2350.0), vec2(22.0, 12.0));
-    builder.rect(Some("bricks"), vec2(2232.0, -2350.0), vec2(22.0, 12.0));
-
-    // Tower1 not so crazy ledge
-    builder.rect(Some("bricks"), vec2(1808.0, -2600.0), vec2(268.0, 12.0));
-
-    // Tower1 sign1
-    builder.rect_graphics("wood_dark", vec2(1600.0, -1600.0), vec2(200.0, 24.0));
-    builder.rect_graphics("wood", vec2(1600.0, -1640.0), vec2(60.0, 120.0));
-
-    // Leftmost house roof
-    builder.polygon(Some("wood"), &[
-        vec2(0.0, -300.0),
-        vec2(0.0, -420.0),
-        vec2(64.0, -420.0),
-        vec2(120.0, -300.0),
-    ]);
-    // Tower roof
-    builder.polygon(Some("wood"), &[
-        vec2(1752.0, -2500.0),
-        vec2(1764.0, -2500.0),
-        vec2(2016.0, -3000.0),
-        vec2(2016.0, -3024.0),
-    ]);
-    builder.polygon(Some("wood"), &[
-        vec2(2016.0, -3000.0),
-        vec2(2016.0, -3024.0),
-        vec2(2292.0, -2500.0),
-        vec2(2280.0, -2500.0),
-    ]);
-
-    // Arrow sign
-    builder.polygon_graphics("wood", &[
-        vec2(1570.0, -1640.0),
-        vec2(1630.0, -1720.0),
-        vec2(1690.0, -1640.0),
-    ]);
-    builder.build_or_die()
 }

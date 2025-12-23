@@ -5,10 +5,7 @@
 use std::rc::Rc;
 
 use crate::levels::TriggerKind;
-use glam::{
-    Vec2,
-    vec2,
-};
+use glam::Vec2;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Shape {
@@ -69,27 +66,5 @@ impl RawLevel {
         }
 
         builder.build_or_die()
-    }
-}
-
-pub fn make_test_raw_level() -> RawLevel {
-    let rect1 = Shape::Rect { pos: vec2(-200.0, 0.0), size: vec2(400.0, 24.0) };
-    let rect2 = Shape::Rect { pos: vec2(-200.0, -400.0), size: vec2(24.0, 400.0) };
-
-    let poly = Shape::Polygon([vec2(200.0, 0.0), vec2(300.0, 0.0), vec2(260.0, -100.0)].into());
-
-    RawLevel {
-        start_pos: vec2(0.0, -60.0),
-        graphics: [Graphic { shape: rect1.clone(), texture: "wood".into() }, Graphic {
-            shape: poly.clone(),
-            texture: "bricks".into(),
-        }]
-        .into(),
-        colliders: [rect1.clone(), rect2.clone()].into(),
-        triggers: [Trigger {
-            shape: poly.clone(),
-            kind: TriggerKind::ShowText(Rc::from("test123")),
-        }]
-        .into(),
     }
 }

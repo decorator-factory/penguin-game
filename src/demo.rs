@@ -446,10 +446,6 @@ pub fn make_new_level_demo_movie() -> DemoMovie {
         .unwrap_or_else(|e| panic!("the demo movie in '../demos/new_level.demo' is malformed: {e}"))
 }
 
-pub fn make_new_empty_demo() -> DemoMovie {
-    DemoMovie::new(Box::new([]))
-}
-
 //-----
 
 #[cfg(test)]

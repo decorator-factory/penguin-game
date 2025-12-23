@@ -3,6 +3,7 @@
 /// match the predicate.
 use std::rc::Rc;
 
+#[inline(always)]
 pub(crate) fn split_while<T, F>(slice: &[T], mut pred: F) -> (&[T], &[T])
 where
     F: FnMut(&T) -> bool,
@@ -63,12 +64,14 @@ macro_rules! cat {
 }
 pub(crate) use cat;
 
+#[inline(always)]
 pub(crate) fn split_from_bytes<T: bytemuck::AnyBitPattern>(bytes: &[u8]) -> (&T, &[u8]) {
     let size = core::mem::size_of::<T>();
     assert!(bytes.len() >= size, "Received bytes, {} but need to split off {}", bytes.len(), size);
     (bytemuck::from_bytes(&bytes[..size]), &bytes[size..])
 }
 
+#[inline(always)]
 pub(crate) fn rc_str_from_utf8(bytes: Rc<[u8]>) -> Result<Rc<str>, core::str::Utf8Error> {
     str::from_utf8(bytes.as_ref())?;
 
