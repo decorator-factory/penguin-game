@@ -336,12 +336,6 @@ fn parse_triggers(
 
 // Shapes
 
-#[derive(Clone, Copy, Debug)]
-enum ShapeDesc {
-    Rect { x: f32, y: f32, w: f32, h: f32 },
-    Polygon { string_id: u16 },
-}
-
 #[derive(Debug, PartialEq, thiserror::Error)]
 pub enum ShapeError {
     #[error("string with id {string_id} has unsuitable length")]
@@ -351,38 +345,33 @@ pub enum ShapeError {
 }
 
 fn parse_shape(chunk: [U32LE; 4], strings: &[impl AsRef<[u8]>]) -> Result<Shape, ShapeError> {
-    shape_desc_to_shape(decode_shape_desc(chunk), strings)
-}
-
-fn shape_desc_to_shape(sd: ShapeDesc, strings: &[impl AsRef<[u8]>]) -> Result<Shape, ShapeError> {
-    match sd {
-        ShapeDesc::Rect { x, y, w, h } => Ok(Shape::Rect { pos: vec2(x, y), size: vec2(w, h) }),
-        ShapeDesc::Polygon { string_id } => {
-            let Some(s) = strings.get(string_id as usize) else {
-                return Err(ShapeError::StringNotFound { string_id });
-            };
-
-            let Some(points) = points_from_string(s.as_ref()) else {
-                return Err(ShapeError::StringBadLength { string_id });
-            };
-
-            if points.len() < 3 || points.len() >= 500 {
-                return Err(ShapeError::StringBadLength { string_id });
-            }
-
-            Ok(Shape::Polygon(points))
-        }
-    }
-}
-
-fn decode_shape_desc(chunk: [U32LE; 4]) -> ShapeDesc {
     if chunk[0].get() == 0xffff_ffff {
         let string_id = chunk[1].get() as u16;
-        ShapeDesc::Polygon { string_id }
+        let points = parse_polygon_points(string_id, strings)?;
+        Ok(Shape::Polygon(points))
     } else {
         let [x, y, w, h] = bytemuck::cast::<_, [F32LE; 4]>(chunk).map(F32LE::get);
-        ShapeDesc::Rect { x, y, w, h }
+        Ok(Shape::Rect { pos: vec2(x, y), size: vec2(w, h) })
     }
+}
+
+fn parse_polygon_points(
+    string_id: u16,
+    strings: &[impl AsRef<[u8]>],
+) -> Result<Box<[Vec2]>, ShapeError> {
+    let Some(s) = strings.get(string_id as usize) else {
+        return Err(ShapeError::StringNotFound { string_id });
+    };
+
+    let Some(points) = points_from_string(s.as_ref()) else {
+        return Err(ShapeError::StringBadLength { string_id });
+    };
+
+    if points.len() < 3 || points.len() >= 500 {
+        return Err(ShapeError::StringBadLength { string_id });
+    }
+
+    Ok(points)
 }
 
 fn points_from_string(s: &[u8]) -> Option<Box<[Vec2]>> {

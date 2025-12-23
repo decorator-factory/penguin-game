@@ -73,6 +73,8 @@ Objects define a shape that is either a rectangle or a polygon. A shape is 16 by
 - Polygon: `0xFFFF_FFFF(u32) string(u16) <padding>`
 
 A polygon referes to a string, whose length must be divisible by 4 (since a `f32` is 4 bytes long).
+Polygons must not exceed 500 points, you will probably never need as much. Polygons should be convex,
+and it's not specified what's going to happen if they're concave.
 
 `0xffff_ffff` happens to be a NaN, which isn't a useful `x` value anyway.
 
