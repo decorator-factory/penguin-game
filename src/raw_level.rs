@@ -13,7 +13,7 @@ use glam::{
 #[derive(Clone, Debug, PartialEq)]
 pub enum Shape {
     Rect { pos: Vec2, size: Vec2 },
-    Polygon(Box<[Vec2]>), // TODO: switch to Rc<[Vec2]> to share polygons
+    Polygon(Rc<[Vec2]>),
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -30,7 +30,13 @@ use pack1::{
     U16LE,
     U32LE,
 };
-use std::rc::Rc;
+use std::{
+    collections::{
+        HashMap,
+        hash_map::Entry,
+    },
+    rc::Rc,
+};
 
 #[derive(thiserror::Error, PartialEq, Debug)]
 #[non_exhaustive]
@@ -116,11 +122,50 @@ pub fn parse(src: &[u8]) -> Result<RawLevel, ParseError> {
         return Err(ParseError::SectionGeneric(SEC_LEVEL_START, "wrong section size"));
     };
     let strings = parse_strings(SEC_STRINGS, sections[SEC_STRINGS])?.into_boxed_slice();
-    let colliders = parse_colliders(SEC_COLLIDERS, sections[SEC_COLLIDERS], &strings)?;
-    let graphics = parse_graphics(SEC_GRAPHICS, sections[SEC_GRAPHICS], &strings)?;
-    let triggers = parse_triggers(SEC_TRIGGERS, sections[SEC_TRIGGERS], &strings)?;
+
+    let mut polygons = PolygonPointStore { strings: &strings, cache: HashMap::with_capacity(64) };
+
+    let colliders = parse_colliders(SEC_COLLIDERS, sections[SEC_COLLIDERS], &mut polygons)?;
+    let graphics = parse_graphics(SEC_GRAPHICS, sections[SEC_GRAPHICS], &strings, &mut polygons)?;
+    let triggers = parse_triggers(SEC_TRIGGERS, sections[SEC_TRIGGERS], &strings, &mut polygons)?;
 
     Ok(RawLevel { start_pos, graphics, colliders, triggers })
+}
+
+struct PolygonPointStore<'s> {
+    strings: &'s [Rc<[u8]>],
+    cache: HashMap<u16, Rc<[Vec2]>>,
+}
+
+impl PolygonPointStore<'_> {
+    fn fetch(&mut self, string_id: u16) -> Result<Rc<[Vec2]>, ShapeError> {
+        match self.cache.entry(string_id) {
+            Entry::Occupied(occ) => Ok(Rc::clone(occ.get())),
+            Entry::Vacant(vac) => {
+                let points = parse_polygon_points(string_id, self.strings)?;
+                vac.insert(Rc::clone(&points));
+                Ok(points)
+            }
+        }
+    }
+}
+
+fn parse_polygon_points(
+    string_id: u16,
+    strings: &[impl AsRef<[u8]>],
+) -> Result<Rc<[Vec2]>, ShapeError> {
+    let Some(s) = strings.get(string_id as usize) else {
+        return Err(ShapeError::StringNotFound { string_id });
+    };
+
+    let Some(pairs): Option<&[[F32LE; 2]]> = bytemuck::try_cast_slice(s.as_ref()).ok() else {
+        return Err(ShapeError::StringBadLength { string_id });
+    };
+    let points: Rc<[Vec2]> = pairs.iter().map(|[x, y]| vec2(x.get(), y.get())).collect();
+    if points.len() < 3 || points.len() >= 500 {
+        return Err(ShapeError::StringBadLength { string_id });
+    }
+    Ok(points)
 }
 
 fn map_sections<'b, const N: usize>(
@@ -194,8 +239,12 @@ pub enum GraphicError {
     StringNotUtf8(u16),
 }
 
-fn parse_graphic(chunk: GraphicChunk, strings: &[Rc<[u8]>]) -> Result<Graphic, GraphicError> {
-    let shape = parse_shape(chunk.shape, strings).map_err(GraphicError::BadShape)?;
+fn parse_graphic(
+    chunk: GraphicChunk,
+    strings: &[Rc<[u8]>],
+    polygons: &mut PolygonPointStore,
+) -> Result<Graphic, GraphicError> {
+    let shape = parse_shape(chunk.shape, polygons).map_err(GraphicError::BadShape)?;
     let string_id = chunk.texture_string_id.get();
     let Some(rc_bytes) = strings.get(string_id as usize) else {
         return Err(GraphicError::BadStringIndex(string_id));
@@ -210,6 +259,7 @@ fn parse_graphics(
     section_id: usize,
     section_data: &[u8],
     strings: &[Rc<[u8]>],
+    polygons: &mut PolygonPointStore,
 ) -> Result<Box<[Graphic]>, ParseError> {
     let (_, chunks, _) = parse_array::<GraphicChunk>(section_data)
         .map_err(|e| ParseError::SectionGeneric(section_id, e))?;
@@ -217,7 +267,7 @@ fn parse_graphics(
     chunks
         .iter()
         .copied()
-        .map(|chunk| parse_graphic(chunk, strings))
+        .map(|chunk| parse_graphic(chunk, strings, polygons))
         .enumerate()
         .map(|(i, x)| x.map_err(|e| (i, e)))
         .collect::<Result<Box<[Graphic]>, _>>()
@@ -229,14 +279,14 @@ fn parse_graphics(
 fn parse_colliders(
     section_id: usize,
     section_data: &[u8],
-    strings: &[impl AsRef<[u8]>],
+    polygons: &mut PolygonPointStore,
 ) -> Result<Box<[Shape]>, ParseError> {
     let (_, items, _) = parse_array::<[U32LE; 4]>(section_data)
         .map_err(|e| ParseError::SectionGeneric(section_id, e))?;
     items
         .iter()
         .copied()
-        .map(|chunk| parse_shape(chunk, strings))
+        .map(|chunk| parse_shape(chunk, polygons))
         .enumerate()
         .map(|(i, x)| x.map_err(|e| (i, e)))
         .collect::<Result<Box<[Shape]>, _>>()
@@ -270,8 +320,12 @@ pub enum TriggerError {
     UnknownTrigger,
 }
 
-fn parse_trigger(chunk: TriggerChunk, strings: &[Rc<[u8]>]) -> Result<Trigger, TriggerError> {
-    let shape = parse_shape(chunk.shape, strings).map_err(TriggerError::BadShape)?;
+fn parse_trigger(
+    chunk: TriggerChunk,
+    strings: &[Rc<[u8]>],
+    polygons: &mut PolygonPointStore,
+) -> Result<Trigger, TriggerError> {
+    let shape = parse_shape(chunk.shape, polygons).map_err(TriggerError::BadShape)?;
     let kind = parse_trigger_kind(chunk.trigger_kind, strings)?;
     Ok(Trigger { shape, kind })
 }
@@ -321,13 +375,14 @@ fn parse_triggers(
     section_id: usize,
     section_data: &[u8],
     strings: &[Rc<[u8]>],
+    polygons: &mut PolygonPointStore,
 ) -> Result<Box<[Trigger]>, ParseError> {
     let (_, items, _) = parse_array::<TriggerChunk>(section_data)
         .map_err(|e| ParseError::SectionGeneric(section_id, e))?;
     items
         .iter()
         .copied()
-        .map(|chunk| parse_trigger(chunk, strings))
+        .map(|chunk| parse_trigger(chunk, strings, polygons))
         .enumerate()
         .map(|(i, x)| x.map_err(|e| (i, e)))
         .collect::<Result<Box<[Trigger]>, _>>()
@@ -344,39 +399,15 @@ pub enum ShapeError {
     StringNotFound { string_id: u16 },
 }
 
-fn parse_shape(chunk: [U32LE; 4], strings: &[impl AsRef<[u8]>]) -> Result<Shape, ShapeError> {
+fn parse_shape(chunk: [U32LE; 4], polygons: &mut PolygonPointStore) -> Result<Shape, ShapeError> {
     if chunk[0].get() == 0xffff_ffff {
         let string_id = chunk[1].get() as u16;
-        let points = parse_polygon_points(string_id, strings)?;
+        let points = polygons.fetch(string_id)?;
         Ok(Shape::Polygon(points))
     } else {
         let [x, y, w, h] = bytemuck::cast::<_, [F32LE; 4]>(chunk).map(F32LE::get);
         Ok(Shape::Rect { pos: vec2(x, y), size: vec2(w, h) })
     }
-}
-
-fn parse_polygon_points(
-    string_id: u16,
-    strings: &[impl AsRef<[u8]>],
-) -> Result<Box<[Vec2]>, ShapeError> {
-    let Some(s) = strings.get(string_id as usize) else {
-        return Err(ShapeError::StringNotFound { string_id });
-    };
-
-    let Some(points) = points_from_string(s.as_ref()) else {
-        return Err(ShapeError::StringBadLength { string_id });
-    };
-
-    if points.len() < 3 || points.len() >= 500 {
-        return Err(ShapeError::StringBadLength { string_id });
-    }
-
-    Ok(points)
-}
-
-fn points_from_string(s: &[u8]) -> Option<Box<[Vec2]>> {
-    let pairs: &[[F32LE; 2]] = bytemuck::try_cast_slice(s).ok()?;
-    Some(pairs.iter().map(|[x, y]| vec2(x.get(), y.get())).collect())
 }
 
 /// Parses an array of at most `u16::MAX` items.
