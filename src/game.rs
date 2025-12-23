@@ -16,10 +16,23 @@ use crate::{
     levels,
 };
 
-const UPS_PRESETS: &[f64] =
-    &[1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 240.0, 480.0, 1200.0, 2400.0, 12000.0, 24000.0];
+const UPS_PRESETS: [f64; 12] =
+    [1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 240.0, 480.0, 1200.0, 2400.0, 12000.0, 24000.0];
+
+const INVERSE_UPS: [f64; UPS_PRESETS.len()] = {
+    // UPS_PRESETS.map(f64::recip)
+    let mut rv = UPS_PRESETS;
+    let mut i = 0;
+    while i < UPS_PRESETS.len() {
+        rv[i] = rv[i].recip();
+        i += 1;
+    }
+    rv
+};
+
 const DEFAULT_UPS_PRESET: usize = 6;
-#[allow(clippy::float_cmp)]
+
+#[allow(clippy::float_cmp_const)]
 const _: () = assert!(UPS_PRESETS[DEFAULT_UPS_PRESET] == 240.0, "");
 
 const PENGUIN_RADIUS: f32 = 24.0;
@@ -96,12 +109,12 @@ pub async fn run_game(
             ups_index += 1;
         }
         let ups = UPS_PRESETS[ups_index];
+        let inverse_ups = INVERSE_UPS[ups_index];
 
         // Update debt logic
         let now = get_time();
         time_bank += now - last_time;
         last_time = now;
-        let update_time = 1.0 / ups;
         if time_bank >= 0.5 && ups > 2.0 {
             // We "bankrupt" the time bank and assume we have 1 update left to do.
             // This can happen due to several reasons:
@@ -109,17 +122,18 @@ pub async fn run_game(
             // - using very high UPS (like when pressing R) using a debug build and a low end device
             // - on Linux I only get one update per second when the application is minimized
             // and we don't want to run a million updates in a single frame
-            time_bank = update_time;
+            time_bank = inverse_ups;
         }
 
-        stats.measure_update(|| {
-            while time_bank >= update_time {
+        let times = (time_bank * ups).trunc() as u32;
+        stats.measure_update(times, || {
+            for _ in 0..times {
                 device.next_update();
-                update_number += 1;
                 updates::fixed_update(&mut state, device);
-                time_bank -= update_time;
             }
         });
+        update_number += u64::from(times);
+        time_bank -= inverse_ups * f64::from(times);
 
         let fps = get_fps();
         let stats_line = format!(
@@ -145,7 +159,6 @@ pub async fn run_game(
         });
         next_frame().await;
         frame_number += 1;
-        #[expect(clippy::cast_sign_loss)]
         if frame_number.is_multiple_of((fps / 4) as u64) {
             stats.sample();
         }
@@ -271,10 +284,14 @@ impl Stats {
         }
     }
 
-    fn measure_update(&mut self, f: impl FnOnce()) {
+    fn measure_update(&mut self, times: u32, f: impl FnOnce()) {
+        if times == 0 {
+            return;
+        }
+
         let start = get_time();
         f();
-        let delta = get_time() - start;
+        let delta = (get_time() - start) / f64::from(times);
         let subtract = self.update_buffer.pop_back().unwrap();
         self.update_total -= subtract;
         self.update_total += delta;
@@ -797,7 +814,6 @@ mod graphics {
 
         // Draw trail when moving at high speed
         if vel.length() > 1.8 {
-            #[allow(clippy::cast_sign_loss)]
             let steps = ((vel.length() - 1.5) / 0.33).min(100.0) as u16;
             for i in 0..steps {
                 let fade_factor = 1. - f32::from(i) / f32::from(steps);
