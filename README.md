@@ -29,6 +29,7 @@ Debug controls:
 - `Q`/`E`: slow down or speed up the game. You can see the `target UPS` label in the top left to find out the current UPS.
     The game is intended to be played at 240 ticks per second. But for examining or making demos/TAS it might be handy
     to slow down the game to play more precisely; or to speed up the game to skip over the boring parts.
+- `Ctrl+R`: reload level from disk (does not work in the web version)
 
 If you get stuck, see how the demo penguin completes a level.
 

@@ -33,6 +33,7 @@ use parry2d::{
 
 use crate::{
     draw_utils::{
+        DrawOpts,
         draw_textured_poly,
         draw_textured_rect,
     },
@@ -58,18 +59,18 @@ pub struct Level {
 }
 
 pub enum Graphic {
-    Rect { pos: Vec2, size: Vec2, texture: Texture2D },
-    Polygon { points: Rc<[Vec2]>, texture: Texture2D },
+    Rect { pos: Vec2, size: Vec2, opts: DrawOpts },
+    Polygon { points: Rc<[Vec2]>, opts: DrawOpts },
 }
 
 impl Graphic {
     fn macroquad_draw(&self) {
         match self {
-            Graphic::Rect { pos, size, texture } => {
-                draw_textured_rect(*pos, *size, &texture.into());
+            Graphic::Rect { pos, size, opts } => {
+                draw_textured_rect(*pos, *size, opts);
             }
-            Graphic::Polygon { points, texture } => {
-                draw_textured_poly(points, &texture.into());
+            Graphic::Polygon { points, opts } => {
+                draw_textured_poly(points, opts);
             }
         }
     }
@@ -158,12 +159,12 @@ pub fn build_level(
         let texture = lookup_texture(textures, &graphic.texture)?;
         match graphic.shape {
             Shape::Rect { pos, size } => {
-                graphics.push(Graphic::Rect { pos, size, texture });
+                graphics.push(Graphic::Rect { pos, size, opts: texture.into() });
                 graphics_aabbs.push(poswh_aabb(pos, size));
             }
             Shape::Polygon(points) => {
                 graphics_aabbs.push(Aabb::from_points(points.iter().copied().map(vec_to_parry)));
-                graphics.push(Graphic::Polygon { points, texture });
+                graphics.push(Graphic::Polygon { points, opts: texture.into() });
             }
         }
     }

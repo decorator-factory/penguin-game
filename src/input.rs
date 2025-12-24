@@ -47,8 +47,8 @@ impl InputDevice for MacroquadInput {
 
     fn is_input_down(&self, input: Input) -> bool {
         match input {
-            Input::Left => mq::is_key_down(mq::KeyCode::A),
-            Input::Right => mq::is_key_down(mq::KeyCode::D),
+            Input::Left => mq::is_key_down(mq::KeyCode::A) || mq::is_key_down(mq::KeyCode::Left),
+            Input::Right => mq::is_key_down(mq::KeyCode::D) || mq::is_key_down(mq::KeyCode::Right),
             Input::Shoot => mq::is_mouse_button_down(mq::MouseButton::Left),
         }
     }

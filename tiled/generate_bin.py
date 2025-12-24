@@ -36,7 +36,8 @@ if not layers:
 
 all_objects = [obj for layer in layers[::-1] for obj in layer["objects"]]
 
-def _extract_property(obj: dict[str, Any], name: str, expected_type: str) -> Any:
+
+def _extract_property(obj: dict[str, Any], name: str, expected_type: str, required: bool = True) -> Any:
     for prop in obj.get("properties", []):
         if prop["name"] == name:
             if prop.get("type") != expected_type:
@@ -44,7 +45,11 @@ def _extract_property(obj: dict[str, Any], name: str, expected_type: str) -> Any
                     f"Property {name!r} in object with id={obj['id']} "
                     "must be of type {expected_type!r}")
             return prop.get("value")
-    raise Exception(f"Expected property {name!r} not found in object with id={obj['id']}")
+
+    if required:
+        raise Exception(f"Expected property {name!r} not found in object with id={obj['id']}")
+    else:
+        return None
 
 
 STATUS_ICONS: Mapping[str, int] = {"Wrong": 0, "Nice": 1}
@@ -70,7 +75,7 @@ def render_trigger_kind(obj: dict[str, Any], get_loc_by_id: GetLocById, ser: Ser
             return b"\x03" + bytes([enabled]) + b"\x00" * 14
         case "Goto":
             target_id = _extract_property(obj, "loc", "object")
-            status_icon = _extract_property(obj, "status_icon", "string")
+            status_icon = _extract_property(obj, "status_icon", "string", required=False) or "Nice"
             assert isinstance(target_id, int)
             if target_id == 0:  # Tiled uses this as the default apparently
                 raise Exception(f"Object with id={obj['id']} must have a location assigned")
@@ -125,7 +130,7 @@ class Serializer:
         # (where "banana" and "ban" occupy the same buffer space)
         self._strings: list[bytes] = [b""]
         self._polygon_to_id: dict[Poly, int] = {}
-        self._string_to_id: dict[bytes, int] = {}
+        self._string_to_id: dict[bytes, int] = {b"": 0}
         self._graphics: list[bytes] = []
         self._colliders: list[bytes] = []
         self._triggers: list[bytes] = []
@@ -286,6 +291,9 @@ def render_obj(obj: dict[str, Any], get_loc_by_id: GetLocById, ser: Serializer) 
         case {"type": "Trigger"}:
             shape = render_obj_shape(obj, ser)
             trigger = render_trigger_kind(obj, get_loc_by_id, ser)
+            texture = find_texture(obj)
+            if texture := find_texture(obj):
+                ser.add_graphic(shape, texture)
             ser.add_trigger(shape, trigger)
 
         case {"type": "Graphics"}:

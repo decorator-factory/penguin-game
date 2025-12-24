@@ -1,0 +1,27 @@
+#!/usr/bin/xonsh
+
+levels = {
+    "tiled/big_level.tmj": "./levels/big.bin",
+    "tiled/default_level.tmj": "./levels/default.bin",
+    "tiled/test_level.tmj": "./levels/new.bin",
+}
+
+while True:
+    if !(which jj):
+        diff = !(jj diff --name-only)
+    else:
+        diff = !(git diff --name-only)
+    assert diff
+
+    for file in diff.output.splitlines():
+        file = file.strip("\n")
+        if (dest := levels.get(file)):
+            new = !(find -wholename ./@(file) -newer @(dest))
+            assert new, new.err
+            if new.output:
+                print(f"Updating {file}")
+                _ = ![python3 tiled/generate_bin.py @(file) @(dest)]
+            else:
+                print(f"{file} hasn't changed")
+
+    assert ![inotifywait -e modify tiled/]

@@ -14,7 +14,7 @@ pub enum DemoAction {
     SetLookAngle(f32), // degrees!
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Default, PartialEq)]
 pub struct DemoMovie {
     actions: Box<[(u64, DemoAction)]>,
 }

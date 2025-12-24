@@ -45,7 +45,7 @@
             ]
         },
         {
-            "color": "#ffff4000",
+            "color": "#ffaa2ddf",
             "drawFill": true,
             "id": 3,
             "members": [
@@ -75,6 +75,11 @@
             "members": [
                 {
                     "name": "action",
+                    "type": "string",
+                    "value": ""
+                },
+                {
+                    "name": "texture_id",
                     "type": "string",
                     "value": ""
                 }

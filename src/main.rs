@@ -99,6 +99,7 @@ fn fetch_demo(source: DemoSource) -> Result<demo::DemoMovie, String> {
         DemoSource::Default => Ok(demo::make_default_demo_movie()),
         DemoSource::NewLevelDemo => Ok(demo::make_new_level_demo_movie()),
         DemoSource::File(path) => try_read_demo_movie(&path),
+        DemoSource::Empty => Ok(demo::DemoMovie::default()),
     }
 }
 
@@ -152,6 +153,7 @@ struct Args {
 enum DemoSource {
     Default,
     NewLevelDemo,
+    Empty,
     #[cfg_attr(target_family = "wasm", expect(dead_code))]
     File(PathBuf),
 }
@@ -164,13 +166,14 @@ struct InputDemo {
 
 impl clap::ValueEnum for game::LevelSource {
     fn value_variants<'a>() -> &'a [Self] {
-        &[game::LevelSource::Default, game::LevelSource::New]
+        &[game::LevelSource::Default, game::LevelSource::New, game::LevelSource::Big]
     }
 
     fn to_possible_value(&self) -> Option<clap::builder::PossibleValue> {
         Some(clap::builder::PossibleValue::new(match self {
             game::LevelSource::Default => "default",
             game::LevelSource::New => "new",
+            game::LevelSource::Big => "big",
         }))
     }
 }
@@ -239,6 +242,7 @@ mod cli {
                 match level_source {
                     LevelSource::Default => DemoSource::Default,
                     LevelSource::New => DemoSource::NewLevelDemo,
+                    LevelSource::Big => DemoSource::Empty,
                 }
             } else {
                 DemoSource::File(PathBuf::from(path))
@@ -260,12 +264,18 @@ mod cli {
 
         let hash = opts.get("url_fragment").map_or("", String::as_ref);
         let is_demo = hash.contains("demo");
-        let level_source =
-            if hash.contains("new") { LevelSource::New } else { LevelSource::Default };
+        let level_source = if hash.contains("new") {
+            LevelSource::New
+        } else if hash.contains("big") {
+            LevelSource::Big
+        } else {
+            LevelSource::Default
+        };
         let input_demo = is_demo
             .then_some(match level_source {
                 LevelSource::Default => DemoSource::Default,
                 LevelSource::New => DemoSource::NewLevelDemo,
+                LevelSource::Big => DemoSource::Empty,
             })
             .map(|source| InputDemo { source, skip_until_update: 0 });
 

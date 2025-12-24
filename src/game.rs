@@ -1,3 +1,6 @@
+use macroquad::prelude::*;
+use miniquad::TextureWrap;
+use parry2d::shape::ConvexPolygon;
 use std::{
     collections::{
         HashMap,
@@ -6,10 +9,6 @@ use std::{
     fmt::Write,
     rc::Rc,
 };
-
-use macroquad::prelude::*;
-use miniquad::TextureWrap;
-use parry2d::shape::ConvexPolygon;
 
 use crate::{
     compat::performance_timer,
@@ -58,6 +57,25 @@ pub enum LevelSource {
     #[default]
     Default,
     New,
+    Big,
+}
+
+fn load_level_from_disk(source: &LevelSource) -> Vec<u8> {
+    let path = match source {
+        LevelSource::Default => "../levels/default.bin",
+        LevelSource::New => "../levels/new.bin",
+        LevelSource::Big => "../levels/big.bin",
+    };
+    let path = std::path::PathBuf::from(file!()).parent().unwrap().join(path);
+    std::fs::read(&path).unwrap_or_else(|e| panic!("failed to read path {}: {}", path.display(), e))
+}
+
+fn load_bundled_level(source: &LevelSource) -> &'static [u8] {
+    match source {
+        LevelSource::Default => include_bytes!("../levels/default.bin"),
+        LevelSource::New => include_bytes!("../levels/new.bin"),
+        LevelSource::Big => include_bytes!("../levels/big.bin"),
+    }
 }
 
 pub async fn run_game(
@@ -65,16 +83,42 @@ pub async fn run_game(
     level_source: LevelSource,
     skip_until_update: u64,
 ) {
-    let level_src: &[u8] = match level_source {
-        LevelSource::Default => include_bytes!("../levels/default.bin"),
-        LevelSource::New => include_bytes!("../levels/new.bin"),
-    };
-
     let textures = load_textures();
+
+    let level_src = load_bundled_level(&level_source);
     let raw_level = level_parsing::parse(level_src).expect("bundled level is corrupted");
+
     let level = levels::build_level(raw_level, &textures).expect("bundled level is invalid");
     let mut state = GameState::new(level);
 
+    loop {
+        match game_loop(device, &mut state, skip_until_update).await {
+            GameResult::Stop => break,
+            GameResult::ReloadLevel => {
+                let level_src = load_level_from_disk(&level_source);
+                let raw_level =
+                    level_parsing::parse(&level_src).expect("bundled level is corrupted");
+                let level =
+                    levels::build_level(raw_level, &textures).expect("bundled level is invalid");
+                state = GameState::new(level);
+            }
+        }
+    }
+
+    macroquad::logging::warn!("Closing RJP window");
+}
+
+#[must_use]
+enum GameResult {
+    Stop,
+    ReloadLevel,
+}
+
+async fn game_loop(
+    device: &mut dyn InputDevice,
+    state: &mut GameState,
+    skip_until_update: u64,
+) -> GameResult {
     macroquad::logging::info!("Initialized RJP state!");
 
     let mut time_bank: f64 = 0.0;
@@ -94,13 +138,22 @@ pub async fn run_game(
         // TODO: duplication with main loop?
         device.next_update();
         update_number += 1;
-        updates::fixed_update(&mut state, device);
+        updates::fixed_update(state, device);
     }
 
     let mut last_time = performance_timer();
     // Handling the quit event manually allows us to save the demo recording
     prevent_quit();
     while !is_quit_requested() {
+        if cfg!(not(target_family = "wasm"))
+            && is_key_down(KeyCode::LeftControl)
+            && is_key_pressed(KeyCode::R)
+            && update_number != skip_until_update
+        {
+            // if we don't check `update_number`, we enter an infinite loop
+            return GameResult::ReloadLevel;
+        }
+
         if is_key_pressed(KeyCode::Q) && ups_index > 0 {
             ups_index -= 1;
         } else if is_key_pressed(KeyCode::E) && ups_index < UPS_PRESETS.len() - 1 {
@@ -127,7 +180,7 @@ pub async fn run_game(
         stats.measure_update(times, || {
             for _ in 0..times {
                 device.next_update();
-                updates::fixed_update(&mut state, device);
+                updates::fixed_update(state, device);
             }
         });
         update_number += u64::from(times);
@@ -145,7 +198,7 @@ pub async fn run_game(
 
         let font_size = 16.0;
         stats.measure_graphics(|| {
-            graphics::draw_state(&state, device.look_angle_radians());
+            graphics::draw_state(state, device.look_angle_radians());
             let mut y = font_size * 1.25;
             y += draw_text_bold(&fps_line, 8.0, y, font_size, BLACK).height + 2.0;
 
@@ -163,7 +216,7 @@ pub async fn run_game(
         }
     }
 
-    macroquad::logging::warn!("Closing RJP window");
+    GameResult::Stop
 }
 
 #[derive(Clone, Debug)]
@@ -687,7 +740,7 @@ mod graphics {
     };
     use macroquad::prelude::*;
 
-    const BG_COLOR: Color = Color::new(0.6, 0.7, 0.9, 1.0);
+    const BG_COLOR: Color = Color::new(0.7, 0.8, 0.9, 1.0);
 
     pub fn draw_state(state: &GameState, look_angle: f32) {
         push_camera_state();
@@ -752,7 +805,7 @@ mod graphics {
                 default_anchor.x - dpos.x,
                 default_anchor.y - dpos.y,
                 2.0,
-                LIGHTGRAY.with_alpha(alpha),
+                BLACK.with_alpha(alpha),
             );
         }
 
@@ -769,6 +822,7 @@ mod graphics {
 
     fn viewport_offset_to_camera(offset: Vec2, screen_size: Vec2) -> Camera2D {
         let [w, h] = screen_size.to_array();
+        let offset = offset.round();
 
         // I don't understand why, but `from_display_rect` flips the height portion by
         // default, or something like that
@@ -791,8 +845,9 @@ mod graphics {
             WHITE,
         );
 
-        let bulb_bolor = Color::new(1.0 - ttl_frac, 1.0 - ttl_frac, 1.0 - ttl_frac, 1.0);
-        draw_circle(pos.x, pos.y, ROCKET_RADIUS, bulb_bolor);
+        let bulb_color = Color::new(1.0 - ttl_frac, 1.0 - ttl_frac, 1.0 - ttl_frac, 1.0);
+        draw_circle(pos.x, pos.y, ROCKET_RADIUS + 2.0, BLACK.with_alpha((1.0 - ttl_frac).powi(2)));
+        draw_circle(pos.x, pos.y, ROCKET_RADIUS, bulb_color);
     }
 
     fn draw_explosion(Explosion { pos, radius, ttl, initial_ttl, .. }: Explosion) {
@@ -811,7 +866,7 @@ mod graphics {
         }
 
         let Penguin { pos, vel, fuel, has_eyepatch, status, status_ttl, .. } = penguin;
-        let (cx, cy) = (pos.x, pos.y);
+        let (cx, cy) = (pos.x.round(), pos.y.round());
 
         // Draw trail when moving at high speed
         if vel.length() > 1.8 {
@@ -936,7 +991,6 @@ macro_rules! include_with_name {
     };
 }
 
-#[inline(never)]
 #[rustfmt::skip]
 fn load_textures() -> HashMap<&'static str, Texture2D> {
     HashMap::from([
@@ -945,16 +999,20 @@ fn load_textures() -> HashMap<&'static str, Texture2D> {
         ("barrier_eyepatch", include_texture(include_with_name!("../assets/barrier_eyepatch.png"), true)),
         ("barrier_no_eyepatch", include_texture(include_with_name!("../assets/barrier_no_eyepatch.png"), true)),
         ("barrier_danger", include_texture(include_with_name!("../assets/barrier_danger.png"), true)),
+        ("barrier_danger_transparent", include_texture(include_with_name!("../assets/barrier_danger_transparent.png"), true)),
         ("barrier_move", include_texture(include_with_name!("../assets/barrier_move.png"), true)),
         ("bricks", include_texture(include_with_name!("../assets/bricks.png"), true)),
         ("bricks_dark", include_texture(include_with_name!("../assets/bricks_dark.png"), true)),
         ("caution", include_texture(include_with_name!("../assets/caution.png"), true)),
         ("water", include_texture(include_with_name!("../assets/water.png"), true)),
+        ("white", include_texture(include_with_name!("../assets/white.png"), true)),
         ("wood", include_texture(include_with_name!("../assets/wood.png"), true)),
         ("wood_dark", include_texture(include_with_name!("../assets/wood_dark.png"), true)),
 
         ("crocodile4", include_texture(include_with_name!("../assets/crocodile4.png"), false)),
+        ("pepper32", include_texture(include_with_name!("../assets/pepper32.png"), false)),
         ("question_mark", include_texture(include_with_name!("../assets/question_mark.png"), false)),
+        ("question_mark32", include_texture(include_with_name!("../assets/question_mark32.png"), false)),
     ])
 }
 
