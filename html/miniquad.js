@@ -38,11 +38,12 @@ It now exports these functions:
 And these attributes:
 - wasm_exports
 
-Also, improvements have been made to error handling.
+Miscellaneous improvements:
 - we now export `set_panic_message(message: *const char)` FFI function that let Rust report
     a panic message before its last breath.
 - when Rust does panic, all event handling is stopped, and all the handlers added using
     `add_panic_handler` will be called.
+- text encoding is gradually being moved to TextEncoder and TextDecoder (not a big priority)
 */
 
 "use strict";
@@ -1387,16 +1388,14 @@ const importObject = {
                 [window, "paste", function (e) {
                     e.stopPropagation();
                     e.preventDefault();
-                    var clipboardData = e.clipboardData || window.clipboardData;
-                    var pastedData = clipboardData.getData('Text');
+                    const clipboardData = e.clipboardData || window.clipboardData;
+                    const pastedData = clipboardData.getData('Text');
 
                     if (pastedData != undefined && pastedData != null && pastedData.length != 0) {
-                        // WTF? We're invoking a TextEncoder, discarding its result, and then
-                        // encoding text as UTF8 in a completely unrelated way
-                        var len = (new TextEncoder().encode(pastedData)).length;
-                        var msg = wasm_exports.allocate_vec_u8(len);
-                        var heap = new Uint8Array(wasm_memory.buffer, msg, len);
-                        stringToUTF8(pastedData, heap, 0, len);
+                        const utf8 = new TextEncoder().encode(pastedData);
+                        const len = utf8.byteLength;
+                        const msg = wasm_exports.allocate_vec_u8(len);
+                        new Uint8Array(wasm_memory.buffer, msg, len).set(utf8);
                         wasm_exports.on_clipboard_paste(msg, len);
                     }
                 }],
