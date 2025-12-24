@@ -25,6 +25,7 @@ enumset = "=1.1.10"
 clap = { version = "4.5.53", default-features = false, features = ["std", "help", "usage", "error-context"] }
 bytemuck = { version = "=1.24.0", features = ["derive"] }
 pack1 = { version = "=1.0.0", features = ["bytemuck"] }
+rustc-demangle = "0.1"
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }

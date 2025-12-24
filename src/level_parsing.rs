@@ -141,14 +141,11 @@ struct PolygonPointStore<'s> {
 
 impl PolygonPointStore<'_> {
     fn fetch(&mut self, string_id: u16) -> Result<Rc<[Vec2]>, ShapeError> {
-        match self.cache.entry(string_id) {
-            Entry::Occupied(occ) => Ok(Rc::clone(occ.get())),
-            Entry::Vacant(vac) => {
-                let points = parse_polygon_points(string_id, self.strings)?;
-                vac.insert(Rc::clone(&points));
-                Ok(points)
-            }
-        }
+        let points: &Rc<[Vec2]> = match self.cache.entry(string_id) {
+            Entry::Occupied(occ) => occ.into_mut(),
+            Entry::Vacant(vac) => vac.insert(parse_polygon_points(string_id, self.strings)?),
+        };
+        Ok(Rc::clone(points))
     }
 }
 

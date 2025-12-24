@@ -20,6 +20,8 @@ mod level_parsing;
 mod levels;
 mod raw_level;
 mod text_utils;
+
+#[cfg(target_family = "wasm")]
 mod wasm;
 
 fn main() {
@@ -130,9 +132,7 @@ fn fix_panic_handling() {
         );
 
         // SAFETY: string points to an explicitly 0-terminated string
-        unsafe {
-            wasm::set_panic_message(string.as_ptr().cast());
-        };
+        unsafe { wasm::penguin_set_panic_message(string.as_ptr()) };
     }));
 }
 
@@ -250,17 +250,20 @@ mod cli {
     pub fn parse_args_or_die() -> Args {
         use crate::wasm;
 
-        if wasm::is_wasm_demo() {
-            let input_demo = Some(InputDemo { source: DemoSource::Default, skip_until_update: 0 });
-            Args { level_source: LevelSource::Default, input_demo, record_to: None }
-        } else if wasm::is_wasm_new_level_demo() {
-            let input_demo =
-                Some(InputDemo { source: DemoSource::NewLevelDemo, skip_until_update: 0 });
-            Args { level_source: LevelSource::New, input_demo, record_to: None }
-        } else {
-            let level_source =
-                if wasm::is_wasm_new_level() { LevelSource::New } else { LevelSource::Default };
-            Args { level_source, ..Default::default() }
-        }
+        let opts = wasm::read_options();
+        macroquad::logging::info!("Read initialization options: {:?}", opts);
+
+        let hash = opts.get("url_fragment").map_or("", String::as_ref);
+        let is_demo = hash.contains("demo");
+        let level_source =
+            if hash.contains("new") { LevelSource::New } else { LevelSource::Default };
+        let input_demo = is_demo
+            .then_some(match level_source {
+                LevelSource::Default => DemoSource::Default,
+                LevelSource::New => DemoSource::NewLevelDemo,
+            })
+            .map(|source| InputDemo { source, skip_until_update: 0 });
+
+        Args { level_source, input_demo, record_to: None }
     }
 }

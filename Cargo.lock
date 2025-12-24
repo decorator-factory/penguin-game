@@ -557,6 +557,7 @@ dependencies = [
  "nalgebra",
  "pack1",
  "parry2d",
+ "rustc-demangle",
  "thiserror",
 ]
 

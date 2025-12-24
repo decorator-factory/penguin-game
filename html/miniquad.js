@@ -1,5 +1,7 @@
 /*
- https://github.com/not-fl3/miniquad/blob/v0.4.8/js/gl.js
+This is a derivative of this file: https://github.com/not-fl3/miniquad/blob/v0.4.8/js/gl.js
+Orignal license:
+---
 MIT/X Consortium License
 
 @ 2019-2020 Fedor Logachev <not.fl3@gmail.com>
@@ -23,6 +25,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ---
+Changes:
 
 This file was edited to `export` several items and generally make it more flexible and isolated.
 It now exports these functions:
@@ -30,9 +33,10 @@ It now exports these functions:
 - async load(path: string)
 - define_ffi_function(name: string, func: Function)
 - add_panic_handler(func: Function(message: string, backtrace: string) -> void)
+- set_demangler(func: Function(stack: string) -> string)
 
 And these attributes:
-- wasm_exporte
+- wasm_exports
 
 Also, improvements have been made to error handling.
 - we now export `set_panic_message(message: *const char)` FFI function that let Rust report
@@ -49,12 +53,18 @@ let canvas;
 let event_handler_finalizers = [];
 const /* mut */ panic_handlers = [];
 let panic_message = null;
+let demangler_fn = (s) => s;
 let gl;
 
 let clipboard = null;
 
 const /* mut */ plugins = [];
-let wasm_memory;
+
+/**
+ * @type WebAssembly.Memory
+ */
+export let wasm_memory;
+
 let animation_frame_timeout;
 
 let high_dpi = false;
@@ -157,9 +167,8 @@ function UTF8ToString(ptr, maxBytesToRead) {
         // https://tools.ietf.org/html/rfc3629
         var u0 = u8Array[idx++];
 
-        // If not building with TextDecoder enabled, we don't know the string length, so scan for \0 byte.
-        // If building with TextDecoder, we know exactly at what byte index the string ends, so checking for nulls here would be redundant.
-        if (!u0) return str;
+        // NOTE: don't stop on a null byte if we know the length
+        if (maxBytesToRead === undefined && !u0) return str;
 
         if (!(u0 & 0x80)) { str += String.fromCharCode(u0); continue; }
         var u1 = u8Array[idx++] & 63;
@@ -185,7 +194,7 @@ function UTF8ToString(ptr, maxBytesToRead) {
     return str;
 }
 
-function stringToUTF8(str, heap, outIdx, maxBytesToWrite) {
+export function stringToUTF8(str, heap, outIdx, maxBytesToWrite) {
     var startIdx = outIdx;
     var endIdx = outIdx + maxBytesToWrite;
     for (var i = 0; i < str.length; ++i) {
@@ -443,7 +452,6 @@ function _webglGet(name_, p, type) {
     }
 }
 
-let Module;
 export let wasm_exports;
 
 function resize(canvas, on_resize) {
@@ -469,8 +477,9 @@ function animation() {
         for (const finalizer of finalizers) {
             finalizer();
         }
+        const demangled_stack = demangler_fn(e.stack || "");
         for (const handler of panic_handlers) {
-            handler(panic_message || "<panic message not set>", e.stack || "<no backtrace>");
+            handler(panic_message || "<panic message not set>", demangled_stack);
         }
         throw e;
     }
@@ -659,6 +668,8 @@ let emscripten_shaders_hack = false;
 
 const importObject = {
     env: {
+        // NOTE: all of these console_.* functions are buggy.
+        // Macroquad assumes that log messages never contain a null byte.
         console_debug: function (ptr) {
             console.debug(UTF8ToString(ptr));
         },
@@ -674,7 +685,7 @@ const importObject = {
         console_error: function (ptr) {
             console.error(UTF8ToString(ptr));
         },
-        set_panic_message: function (ptr) {
+        penguin_set_panic_message: function (ptr) {
             const message = UTF8ToString(ptr);
             console.error("panic message set:", message);
             panic_message = message;
@@ -1193,25 +1204,25 @@ const importObject = {
         glGenerateMipmap: function (index) {
             gl.generateMipmap(index);
         },
-        glRenderbufferStorageMultisample: function(target, samples, internalformat, width, height) {
+        glRenderbufferStorageMultisample: function (target, samples, internalformat, width, height) {
             gl.renderbufferStorageMultisample(target, samples, internalformat, width, height);
         },
-        glFramebufferRenderbuffer: function(target, attachment, renderbuffertarget, renderbuffer) {
+        glFramebufferRenderbuffer: function (target, attachment, renderbuffertarget, renderbuffer) {
             GL.validateGLObjectID(GL.renderbuffers, renderbuffer, 'glFramebufferRenderbuffer', 'renderbuffer');
             gl.framebufferRenderbuffer(target, attachment, renderbuffertarget, GL.renderbuffers[renderbuffer]);
         },
-        glCheckFramebufferStatus: function(target) {
+        glCheckFramebufferStatus: function (target) {
             return gl.checkFramebufferStatus(target);
         },
-        glReadBuffer: function(source) {
+        glReadBuffer: function (source) {
             gl.readBuffer(source)
         },
-        glBlitFramebuffer: function(srcX0, srcY0, srcX1, srcY1,
-                                    dstX0, dstY0, dstX1, dstY1,
-                                    mask, filter) {
+        glBlitFramebuffer: function (srcX0, srcY0, srcX1, srcY1,
+            dstX0, dstY0, dstX1, dstY1,
+            mask, filter) {
             gl.blitFramebuffer(srcX0, srcY0, srcX1, srcY1,
-                               dstX0, dstY0, dstX1, dstY1,
-                               mask, filter);
+                dstX0, dstY0, dstX1, dstY1,
+                mask, filter);
         },
 
         setup_canvas_size: function (high_dpi) {
@@ -1223,7 +1234,7 @@ const importObject = {
                 let lastFocus = document.hasFocus();
                 return () => {
                     let hasFocus = document.hasFocus();
-                    if (lastFocus == hasFocus) {
+                    if (lastFocus != hasFocus) {
                         wasm_exports.focus(hasFocus);
                         lastFocus = hasFocus;
                     }
@@ -1380,6 +1391,8 @@ const importObject = {
                     var pastedData = clipboardData.getData('Text');
 
                     if (pastedData != undefined && pastedData != null && pastedData.length != 0) {
+                        // WTF? We're invoking a TextEncoder, discarding its result, and then
+                        // encoding text as UTF8 in a completely unrelated way
                         var len = (new TextEncoder().encode(pastedData)).length;
                         var msg = wasm_exports.allocate_vec_u8(len);
                         var heap = new Uint8Array(wasm_memory.buffer, msg, len);
@@ -1605,23 +1618,23 @@ export async function load(wasm_path) {
 }
 
 export function set_canvas(newCanvas) {
-  if (!(newCanvas instanceof HTMLCanvasElement)) {
-    console.error("Wrong canvas type passed:", newCanvas);
-    throw new Error("Received wrong canvas type");
-  }
+    if (!(newCanvas instanceof HTMLCanvasElement)) {
+        console.error("Wrong canvas type passed:", newCanvas);
+        throw new Error("Received wrong canvas type");
+    }
 
-  canvas = newCanvas;
+    canvas = newCanvas;
 
-  canvas.focus();
-  canvas.requestPointerLock = canvas.requestPointerLock ||
-      canvas.mozRequestPointerLock ||
-      // pointer lock in any form is not supported on iOS safari
-      // https://developer.mozilla.org/en-US/docs/Web/API/Pointer_Lock_API#browser_compatibility
-      (function () { });
-  document.exitPointerLock = document.exitPointerLock ||
-      document.mozExitPointerLock ||
-      // pointer lock in any form is not supported on iOS safari
-      (function () { });
+    canvas.focus();
+    canvas.requestPointerLock = canvas.requestPointerLock ||
+        canvas.mozRequestPointerLock ||
+        // pointer lock in any form is not supported on iOS safari
+        // https://developer.mozilla.org/en-US/docs/Web/API/Pointer_Lock_API#browser_compatibility
+        (function () { });
+    document.exitPointerLock = document.exitPointerLock ||
+        document.mozExitPointerLock ||
+        // pointer lock in any form is not supported on iOS safari
+        (function () { });
 }
 
 export function define_ffi_function(name, func) {
@@ -1629,6 +1642,11 @@ export function define_ffi_function(name, func) {
         throw new Error(`FFI function ${name} is already defined`)
     }
     importObject.env[name] = func
+}
+
+export function set_demangler(func) {
+    if (typeof func !== "function") throw new TypeError("Expected a function in set_demangler")
+    demangler_fn = func;
 }
 
 export function add_panic_handler(func) {
