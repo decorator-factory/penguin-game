@@ -41,7 +41,7 @@ use std::{
 #[derive(thiserror::Error, PartialEq, Debug)]
 #[non_exhaustive]
 pub enum ParseError {
-    #[error("missing the penguin-level-bin-v0\\n header")]
+    #[error("missing the penguinlevel-bin-v0\\n header")]
     MissingHeader,
 
     #[error("file too small, expected at least {size} bytes", size = MIN_LEVEL_SRC_SIZE)]

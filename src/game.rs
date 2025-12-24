@@ -74,7 +74,7 @@ pub async fn run_game(
     let level = levels::build_level(raw_level, &textures).expect("bundled level is invalid");
     let mut state = GameState::new(level);
 
-    macroquad::logging::info!("Initialized penguin-game state!");
+    macroquad::logging::info!("Initialized RJP state!");
 
     let mut time_bank: f64 = 0.0;
 
@@ -161,7 +161,7 @@ pub async fn run_game(
         }
     }
 
-    macroquad::logging::warn!("Closing penguin-game window");
+    macroquad::logging::warn!("Closing RJP window");
 }
 
 #[derive(Clone, Debug)]

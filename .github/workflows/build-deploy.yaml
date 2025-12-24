@@ -41,7 +41,7 @@ jobs:
       - name: Prepare Deployment Directory
         run: |
           cp -r ./html ./github-pages
-          cp ./target/wasm32-unknown-unknown/release/penguin-game.wasm ./github-pages/penguin-game.wasm
+          cp ./target/wasm32-unknown-unknown/release/rjp.wasm ./github-pages/rjp.wasm
 
       - name: Minify JavaScript
         run: |

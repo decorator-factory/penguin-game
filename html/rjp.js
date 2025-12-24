@@ -33,8 +33,8 @@ export async function init({
     errorElement.classList.add("show");
   });
 
-  await mq.load("penguin-game.wasm");
-  console.log("Loaded penguin-game.wasm successfully")
+  await mq.load("rjp.wasm");
+  console.log("Loaded rjp.wasm successfully")
 }
 
 function ffiReadOptions(out_ptr, max_length) {

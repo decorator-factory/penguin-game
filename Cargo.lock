@@ -543,25 +543,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
-name = "penguin-game"
-version = "0.1.0"
-dependencies = [
- "arrayvec",
- "bytemuck",
- "clap",
- "enumset",
- "glam",
- "image",
- "macroquad",
- "miniquad",
- "nalgebra",
- "pack1",
- "parry2d",
- "rustc-demangle",
- "thiserror",
-]
-
-[[package]]
 name = "png"
 version = "0.17.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -596,6 +577,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a338cc41d27e6cc6dce6cefc13a0729dfbb81c262b1f519331575dd80ef3067f"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "rjp"
+version = "0.1.0"
+dependencies = [
+ "arrayvec",
+ "bytemuck",
+ "clap",
+ "enumset",
+ "glam",
+ "image",
+ "macroquad",
+ "miniquad",
+ "nalgebra",
+ "pack1",
+ "parry2d",
+ "rustc-demangle",
+ "thiserror",
 ]
 
 [[package]]

@@ -1,4 +1,4 @@
-# Binary format description for penguin-game levels
+# Binary format description for RJP levels
 
 Version 0 (in development)
 

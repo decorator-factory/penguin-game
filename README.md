@@ -1,11 +1,11 @@
-# penguin-game
+# rocket-jumping-penguin
 
 In this game, you control a penguin. Being a penguin, you cannot fly or jump. However, you can propel yourself using your rocket launcher. Execute your moves precisely and learn unusual movement techniques to get to the goal.
 
 This game is in very early development, but you can test it out in the browser:
 
-- URL: https://decorator-factory.github.io/penguin-game/
-- Demo URL: https://decorator-factory.github.io/penguin-game/#demo (the penguin will move on its own)
+- URL: https://decorator-factory.github.io/rocket-jumping-penguin/
+- Demo URL: https://decorator-factory.github.io/rocket-jumping-penguin/#demo (the penguin will move on its own)
 
 The goal is to get to the platform inside the tower roof.
 
@@ -13,8 +13,8 @@ The goal is to get to the platform inside the tower roof.
 
 That level is so lame though. Check out this new level. It has crocodiles in it so it might be scary.
 
-- In-development level (WIP): https://decorator-factory.github.io/penguin-game/#new-level
-- In-development level Demo: https://decorator-factory.github.io/penguin-game/#new-level-demo
+- In-development level (WIP): https://decorator-factory.github.io/rocket-jumping-penguin/#new-level
+- In-development level Demo: https://decorator-factory.github.io/rocket-jumping-penguin/#new-level-demo
 
 ## Controls
 
@@ -35,15 +35,15 @@ If you get stuck, see how the demo penguin completes a level.
 ## Command-Line Interface (when running on desktop)
 
 ```
-penguin-game \
+rjp \
     [--level-id <default|new>]
     [--read-demo <@default|path> [--skip-until-update <u64>]]
     [--write-demo <path>]
 ```
 
-- `penguin-game` starts the game as expected
-- `penguin-game --read-demo path/to/file.demo` shows a demo movie; if `@default` is provided, the built-in demo movie (found in `demos/intended.demo`) is played
-- `penguin-game --write-demo movie.demo` records a demo movie and outputs it to `movie.demo` (that file must not already exist). The demo is saved in a simple text format that you can tweak yourself.
+- `rjp` starts the game as expected
+- `rjp --read-demo path/to/file.demo` shows a demo movie; if `@default` is provided, the built-in demo movie (found in `demos/intended.demo`) is played
+- `rjp --write-demo movie.demo` records a demo movie and outputs it to `movie.demo` (that file must not already exist). The demo is saved in a simple text format that you can tweak yourself.
 
     ```
     penguindemo-text-v0
@@ -60,7 +60,7 @@ penguin-game \
     at  332: off  left
     ```
 
-- `penguin-game --read-demo movie1.demo --write-demo movie2.demo`
+- `rjp --read-demo movie1.demo --write-demo movie2.demo`
     starts out playing the demo movie in `movie1.demo`, and when it's done, records a new demo movie and puts that into `movie2.demo`. This allows you to record complicated demos in multiple sittings. I'm very bad at videogames, so all the demos in the `demos/` are
     constructed using some amount of "demo surgery" where one tweaks certain inputs, stitches together different demos, or removes
     sections where one made embarrassing mistakes.

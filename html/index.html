@@ -8,7 +8,7 @@
   <style>
     html,
     body,
-    #penguin-game-canvas {
+    #rjp-canvas {
       margin: 0;
       padding: 0;
       width: 100%;
@@ -18,7 +18,7 @@
       z-index: 0;
     }
 
-    #penguin-game-canvas {
+    #rjp-canvas {
       /* Prevent the user from being able to drag the canvas, which can happen with Ctrl+A */
       user-select: none;
     }
@@ -43,9 +43,9 @@
       display: block;
     }
   </style>
-  <link rel="modulepreload" href="penguin-game.js"/>
+  <link rel="modulepreload" href="rjp.js"/>
   <link rel="modulepreload" href="miniquad.js"/>
-  <link rel="preload" href="penguin-game.wasm" as="fetch" crossorigin/>
+  <link rel="preload" href="rjp.wasm" as="fetch" crossorigin/>
 </head>
 
 <body>
@@ -53,19 +53,19 @@
     <p class="limit-width">
       The game experienced a "panic", which likely means that there's a bug in the game.
       Please report the following error message in an issue at
-      <a href="https://github.com/decorator-factory/penguin-game/issues">
-        https://github.com/decorator-factory/penguin-game/issues</a>
+      <a href="https://github.com/decorator-factory/rjp/issues">
+        https://github.com/decorator-factory/rjp/issues</a>
     </p>
 
     <p id="backtrace" class="preserve-formatting"></p>
   </div>
-  <canvas id="penguin-game-canvas" tabindex="1"></canvas>
+  <canvas id="rjp-canvas" tabindex="1"></canvas>
   <script type="module">
-    import * as penguinGame from "./penguin-game.js";
+    import * as penguinGame from "./rjp.js";
 
     const errorElement = document.getElementById("error");
     const backtraceElement = document.getElementById("backtrace");
-    const canvasElement = document.getElementById("penguin-game-canvas");
+    const canvasElement = document.getElementById("rjp-canvas");
     penguinGame.init({
       errorElement,
       backtraceElement,

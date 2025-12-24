@@ -27,7 +27,7 @@ mod wasm;
 
 fn main() {
     let conf = Conf {
-        window_title: "penguin".to_string(),
+        window_title: "Rocket Jumping Penguin".to_string(),
         window_width: 1280,
         window_height: 720,
         window_resizable: true,
@@ -132,7 +132,7 @@ fn fix_panic_handling() {
 
         let backtrace = std::backtrace::Backtrace::force_capture();
         let string = format!(
-            "penguin-game panicked at {location} with message: {panic_message} and backtrace: {backtrace:?}\x00"
+            "RJP panicked at {location} with message: {panic_message} and backtrace: {backtrace:?}\x00"
         );
 
         // SAFETY: string points to an explicitly 0-terminated string
@@ -197,11 +197,11 @@ mod cli {
             value_parser,
         };
 
-        let matches = Command::new("penguin-game")
+        let matches = Command::new("rjp")
             .version("v0.0")
             .about(
                 "A 2D platformer game where you rocket jump as a penguin. \
-                See the README at https://github.com/decorator-factory/penguin-game \
+                See the README at https://github.com/decorator-factory/rocket-jumping-penguin \
                 for extended CLI help.")
             .propagate_version(true)
             .arg(Arg::new("write_demo")
