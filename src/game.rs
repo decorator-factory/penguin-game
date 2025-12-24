@@ -71,8 +71,7 @@ pub async fn run_game(
 
     let textures = load_textures();
     let raw_level = level_parsing::parse(level_src).expect("bundled level is corrupted");
-    let level = levels::build_level(&raw_level, &textures).expect("bundled level is invalid");
-
+    let level = levels::build_level(raw_level, &textures).expect("bundled level is invalid");
     let mut state = GameState::new(level);
 
     macroquad::logging::info!("Initialized penguin-game state!");
