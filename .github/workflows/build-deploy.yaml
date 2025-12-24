@@ -1,9 +1,5 @@
-name: Build and Deploy
+name: Build and Deploy to Pages
 on:
-  push:
-    branches:
-      - trunk
-
   workflow_dispatch:
 
 permissions:
@@ -20,15 +16,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
+            ~/.rustup
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
@@ -37,15 +34,6 @@ jobs:
 
       - name: Download wasm toolchain
         run: rustup target add wasm32-unknown-unknown
-
-      - name: Lint with clippy on x86_64
-        run: cargo clippy --all-targets --target x86_64-unknown-linux-gnu
-
-      - name: Lint with clippy on wasm
-        run: cargo clippy --all-targets --target wasm32-unknown-unknown
-
-      - name: Test
-        run: cargo test
 
       - name: Build Rust executable
         run: cargo build --release --target wasm32-unknown-unknown

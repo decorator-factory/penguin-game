@@ -1,0 +1,42 @@
+name: Lint and Test
+on:
+  push:
+    branches:
+      - trunk
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.rustup
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Output rust version
+        run: rustup --version
+
+      - name: Download wasm toolchain
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Lint with clippy on x86_64
+        run: cargo clippy --all-targets --target x86_64-unknown-linux-gnu
+
+      - name: Lint with clippy on wasm
+        run: cargo clippy --all-targets --target wasm32-unknown-unknown
+
+      - name: Test
+        run: cargo test
