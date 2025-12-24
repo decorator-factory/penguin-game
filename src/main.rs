@@ -107,10 +107,13 @@ async fn with_exclusive_file(
 ) -> Result<(), String> {
     let mut file = std::fs::OpenOptions::new()
         .write(true)
-        .create_new(true)
+        .create(true)
+        .truncate(true)
         .open(path)
-        .map_err(|e| format!("Could not open output file {}: {}", path.display(), e))?;
+        .map_err(|e| format!("could not open output file {}: {}", path.display(), e))?;
     inner(&mut file).await?;
+
+    // NOTE: the following will error if we're writing to /dev/null
     file.sync_all().map_err(|e| format!("while flushing the file: {e}"))
 }
 
