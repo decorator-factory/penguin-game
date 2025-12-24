@@ -1,134 +1,77 @@
 <!doctype html>
 <html lang="en">
-    <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>Penguin Game</title>
-        <style>
-            html,
-            body,
-            #penguin-game-canvas {
-                margin: 0;
-                padding: 0;
-                width: 100%;
-                height: 100%;
-                position: absolute;
-                background: black;
-                z-index: 0;
-            }
 
-            #penguin-game-canvas {
-                /* Prevent the user from being able to drag the canvas, which can happen with Ctrl+A */
-                user-select: none;
-            }
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Penguin Game</title>
+  <style>
+    html,
+    body,
+    #penguin-game-canvas {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      background: black;
+      z-index: 0;
+    }
 
-            #error {
-                background: white;
-                color: black;
-                display: none;
-                padding: 0.25em;
-            }
+    #penguin-game-canvas {
+      /* Prevent the user from being able to drag the canvas, which can happen with Ctrl+A */
+      user-select: none;
+    }
 
-            .limit-width {
-                max-width: 40em;
-            }
+    #error {
+      background: white;
+      color: black;
+      display: none;
+      padding: 0.25em;
+    }
 
-            .preserve-formatting {
-                font-family: monospace;
-                white-space: pre-wrap;
-            }
+    .limit-width {
+      max-width: 40em;
+    }
 
-            #error.show {
-                display: block;
-            }
-        </style>
-    </head>
+    .preserve-formatting {
+      font-family: monospace;
+      white-space: pre-wrap;
+    }
 
-    <body>
-        <div id="error" aria-hidden="true">
-            <p class="limit-width">
-                The game experienced a "panic", which likely means that there's a bug in the game.
-                Please report the following error message in an issue at
-                <a href="https://github.com/decorator-factory/penguin-game/issues">
-                    https://github.com/decorator-factory/penguin-game/issues</a>
-            </p>
+    #error.show {
+      display: block;
+    }
+  </style>
+  <link rel="modulepreload" href="penguin-game.js"/>
+  <link rel="modulepreload" href="miniquad.js"/>
+  <link rel="preload" href="penguin-game.wasm" as="fetch" crossorigin/>
+</head>
 
-            <p id="backtrace" class="preserve-formatting"></p>
-        </div>
-        <canvas id="penguin-game-canvas" tabindex="1"></canvas>
-        <script type="module">
-            import * as mq from "./miniquad.js";
+<body>
+  <div id="error" aria-hidden="true">
+    <p class="limit-width">
+      The game experienced a "panic", which likely means that there's a bug in the game.
+      Please report the following error message in an issue at
+      <a href="https://github.com/decorator-factory/penguin-game/issues">
+        https://github.com/decorator-factory/penguin-game/issues</a>
+    </p>
 
-            const errorElement = document.getElementById("error");
-            const backtraceElement = document.getElementById("backtrace");
+    <p id="backtrace" class="preserve-formatting"></p>
+  </div>
+  <canvas id="penguin-game-canvas" tabindex="1"></canvas>
+  <script type="module">
+    import * as penguinGame from "./penguin-game.js";
 
-            const options = {
-                url_fragment: document.location.hash,
-                asset_root: document.baseURI,
-            };
+    const errorElement = document.getElementById("error");
+    const backtraceElement = document.getElementById("backtrace");
+    const canvasElement = document.getElementById("penguin-game-canvas");
+    penguinGame.init({
+      errorElement,
+      backtraceElement,
+      canvasElement,
+    })
+  </script>
+</body>
 
-            const encodedOptions = new TextEncoder().encode(
-                Object.entries(options).map(([k, v]) => {
-                    // The only way to put a `\x00` or `\x01` in a UTF8 string is using
-                    // the corresponding character.
-                    if (k.includes("\x00") || k.includes("\x01")) throw new Error("k contains bad byte")
-                    if (v.includes("\x00") || v.includes("\x01")) throw new Error("v contains bad byte")
-                    return k + "\x01" + v
-                }).join("\x00")
-            );
-
-            function ffiReadOptions(out_ptr, max_length) {
-                const len = encodedOptions.byteLength;
-                if (max_length < len) {
-                    throw new Error("Options are too long!");
-                }
-                new Uint8Array(mq.wasm_memory.buffer, out_ptr, len).set(encodedOptions);
-                return len;
-            }
-
-            function demangleMultilineString(string) {
-                // NOTE: this function will intentionally leak some memory
-                const utf8 = new TextEncoder().encode(string);
-
-                const in_size = utf8.byteLength;
-                const in_ptr = mq.wasm_exports.allocate_vec_u8(in_size);
-
-                const out_size = utf8.byteLength * 4
-                const out_ptr = mq.wasm_exports.allocate_vec_u8(out_size);
-
-                new Uint8Array(mq.wasm_memory.buffer, in_ptr, utf8.byteLength).set(utf8);
-                const bytes_written = mq.wasm_exports.rustc_demangle_multiline(
-                    in_ptr, in_size,
-                    out_ptr, out_size,
-                );
-
-                const out_array = new Uint8Array(mq.wasm_memory.buffer, out_ptr, bytes_written);
-                return new TextDecoder().decode(out_array)
-            }
-
-            mq.set_canvas(document.getElementById("penguin-game-canvas"));
-
-            mq.define_ffi_function("penguin_read_options", ffiReadOptions);
-            mq.define_ffi_function("is_wasm_demo", function () {
-                return document.location.hash == "#demo";
-            });
-            mq.define_ffi_function("is_wasm_new_level", function () {
-                return document.location.hash == "#new-level";
-            });
-            mq.define_ffi_function("is_wasm_new_level_demo", function () {
-                return document.location.hash == "#new-level-demo";
-            });
-
-            mq.set_demangler(demangleMultilineString);
-            mq.add_panic_handler((message, backtrace) => {
-                backtraceElement.innerText = message + "\n--------\n" + backtrace;
-                errorElement.classList.add("show");
-            });
-
-            (async () => {
-                await mq.load("penguin-game.wasm");
-                console.log("Loaded penguin-game.wasm successfully")
-            })();
-        </script>
-    </body>
 </html>
