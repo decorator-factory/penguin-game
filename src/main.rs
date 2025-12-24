@@ -33,6 +33,7 @@ fn main() {
         window_resizable: true,
         sample_count: 4,
         high_dpi: true,
+        icon: None, // the icon takes up 22K in the binary (even on wasm where it has no effect)
         ..Default::default()
     };
 

@@ -175,6 +175,14 @@ pub fn measure_multiline_text(text: &str, font_size: u16) -> TextDimensions {
     TextDimensions { width: acc.x, height: acc.y + last_hang.max(0.0), offset_y }
 }
 
+pub fn draw_text_bold(text: &str, x: f32, y: f32, font_size: f32, color: Color) -> TextDimensions {
+    let mut dim = draw_text(text, x, y, font_size, color);
+    draw_text(text, x + 1.0, y, font_size, color.with_alpha(color.a * 0.5));
+
+    dim.width += 1.0;
+    dim
+}
+
 fn is_texture_repeating(backend: &dyn RenderingBackend, texture: &Texture2D) -> bool {
     let id = texture.raw_miniquad_id();
     matches!(backend.texture_params(id).wrap, TextureWrap::Repeat)

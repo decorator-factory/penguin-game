@@ -13,6 +13,7 @@ use parry2d::shape::ConvexPolygon;
 
 use crate::{
     compat::performance_timer,
+    draw_utils::draw_text_bold,
     input::InputDevice,
     level_parsing,
     levels,
@@ -43,9 +44,9 @@ const ROCKET_RADIUS: f32 = 4.0;
 const FUEL_MAX: u16 = 240;
 const FUEL_ROCKET_COST: u16 = 100;
 
-const TOOLTIP_TTL_MAX: u16 = 600;
-const TOOLTIP_TTL_GROW_RATE: u16 = 6;
-const TOOLTIP_TTL_FADE_BEGIN: u16 = 240;
+const TOOLTIP_TTL_MAX: u16 = 300;
+const TOOLTIP_TTL_GROW_RATE: u16 = 9;
+const TOOLTIP_TTL_FADE_BEGIN: u16 = 120;
 const _: () = assert!(TOOLTIP_TTL_FADE_BEGIN < TOOLTIP_TTL_MAX, "");
 
 const STATUS_TTL_MAX: u16 = 360;
@@ -146,11 +147,12 @@ pub async fn run_game(
         stats.measure_graphics(|| {
             graphics::draw_state(&state, device.look_angle_radians());
             let mut y = font_size * 1.25;
-            y += draw_text(&fps_line, 8.0, y, font_size, WHITE).height + 2.0;
-            y += draw_text(&stats_line, 8.0, y, font_size, WHITE).height + 2.0;
+            y += draw_text_bold(&fps_line, 8.0, y, font_size, BLACK).height + 2.0;
+
+            y += draw_text_bold(&stats_line, 8.0, y, font_size, BLACK).height + 2.0;
             for string in &state.debug_strings {
                 for line in string.lines() {
-                    y += draw_text(line, 8.0, y, font_size, WHITE).height + 2.0;
+                    y += draw_text_bold(line, 8.0, y, font_size, BLACK).height + 2.0;
                 }
             }
         });
@@ -685,6 +687,8 @@ mod graphics {
     };
     use macroquad::prelude::*;
 
+    const BG_COLOR: Color = Color::new(0.6, 0.7, 0.9, 1.0);
+
     pub fn draw_state(state: &GameState, look_angle: f32) {
         push_camera_state();
         let screen_size = {
@@ -693,7 +697,7 @@ mod graphics {
         };
         let viewport_offset = state.penguin.pos - screen_size / 2.;
         set_camera(&viewport_offset_to_camera(viewport_offset, screen_size));
-        clear_background(DARKBLUE);
+        clear_background(BG_COLOR);
 
         let rect = Rect::new(viewport_offset.x, viewport_offset.y, screen_size.x, screen_size.y);
         state.level.macroquad_draw(rect);
@@ -717,8 +721,7 @@ mod graphics {
         if tooltip.ttl == 0 {
             return;
         }
-        let alpha =
-            f32::from(tooltip.ttl.min(TOOLTIP_TTL_FADE_BEGIN)) / f32::from(TOOLTIP_TTL_FADE_BEGIN);
+        let alpha = (f32::from(tooltip.ttl) / f32::from(TOOLTIP_TTL_FADE_BEGIN)).clamp(0.0, 1.0);
 
         let default_anchor = tooltip.origin - vec2(0.0, 4.0);
 
@@ -760,7 +763,7 @@ mod graphics {
             top_left.y + padding.y + text_dims.offset_y,
             f32::from(FONT_SIZE),
             None,
-            BLACK.with_alpha(0.5 + alpha * 0.5),
+            BLACK.with_alpha(alpha),
         );
     }
 
@@ -769,7 +772,7 @@ mod graphics {
 
         // I don't understand why, but `from_display_rect` flips the height portion by
         // default, or something like that
-        Camera2D::from_display_rect(Rect { x: offset.x.round(), y: offset.y.round() + h, w, h: -h })
+        Camera2D::from_display_rect(Rect { x: offset.x, y: offset.y + h, w, h: -h })
     }
 
     fn draw_rocket(pos: Vec2, vel: Vec2, ttl_frac: f32) {
