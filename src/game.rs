@@ -66,11 +66,11 @@ pub async fn run_game(
     let builder = levels::LevelBuilder::new(load_textures());
     let raw_level = match level_source {
         LevelSource::Default => {
-            crate::level_parsing::parse(include_bytes!("./levels/default.bin")).unwrap()
+            crate::level_parsing::parse(include_bytes!("../levels/default.bin")).unwrap()
         }
 
         LevelSource::New => {
-            crate::level_parsing::parse(include_bytes!("./levels/new.bin")).unwrap()
+            crate::level_parsing::parse(include_bytes!("../levels/new.bin")).unwrap()
         }
     };
     let level = raw_level.build(builder);
@@ -938,21 +938,21 @@ macro_rules! include_with_name {
 #[rustfmt::skip]
 fn load_textures() -> HashMap<&'static str, Texture2D> {
     HashMap::from([
-        ("arrow_left", include_texture(include_with_name!("./assets/arrow_left.png"), true)),
-        ("barrier", include_texture(include_with_name!("./assets/barrier.png"), true)),
-        ("barrier_eyepatch", include_texture(include_with_name!("./assets/barrier_eyepatch.png"), true)),
-        ("barrier_no_eyepatch", include_texture(include_with_name!("./assets/barrier_no_eyepatch.png"), true)),
-        ("barrier_danger", include_texture(include_with_name!("./assets/barrier_danger.png"), true)),
-        ("barrier_move", include_texture(include_with_name!("./assets/barrier_move.png"), true)),
-        ("bricks", include_texture(include_with_name!("./assets/bricks.png"), true)),
-        ("bricks_dark", include_texture(include_with_name!("./assets/bricks_dark.png"), true)),
-        ("caution", include_texture(include_with_name!("./assets/caution.png"), true)),
-        ("water", include_texture(include_with_name!("./assets/water.png"), true)),
-        ("wood", include_texture(include_with_name!("./assets/wood.png"), true)),
-        ("wood_dark", include_texture(include_with_name!("./assets/wood_dark.png"), true)),
+        ("arrow_left", include_texture(include_with_name!("../assets/arrow_left.png"), true)),
+        ("barrier", include_texture(include_with_name!("../assets/barrier.png"), true)),
+        ("barrier_eyepatch", include_texture(include_with_name!("../assets/barrier_eyepatch.png"), true)),
+        ("barrier_no_eyepatch", include_texture(include_with_name!("../assets/barrier_no_eyepatch.png"), true)),
+        ("barrier_danger", include_texture(include_with_name!("../assets/barrier_danger.png"), true)),
+        ("barrier_move", include_texture(include_with_name!("../assets/barrier_move.png"), true)),
+        ("bricks", include_texture(include_with_name!("../assets/bricks.png"), true)),
+        ("bricks_dark", include_texture(include_with_name!("../assets/bricks_dark.png"), true)),
+        ("caution", include_texture(include_with_name!("../assets/caution.png"), true)),
+        ("water", include_texture(include_with_name!("../assets/water.png"), true)),
+        ("wood", include_texture(include_with_name!("../assets/wood.png"), true)),
+        ("wood_dark", include_texture(include_with_name!("../assets/wood_dark.png"), true)),
 
-        ("crocodile4", include_texture(include_with_name!("./assets/crocodile4.png"), false)),
-        ("question_mark", include_texture(include_with_name!("./assets/question_mark.png"), false)),
+        ("crocodile4", include_texture(include_with_name!("../assets/crocodile4.png"), false)),
+        ("question_mark", include_texture(include_with_name!("../assets/question_mark.png"), false)),
     ])
 }
 
