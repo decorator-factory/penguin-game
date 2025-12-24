@@ -32,39 +32,3 @@ pub struct RawLevel {
     pub colliders: Box<[Shape]>,
     pub triggers: Box<[Trigger]>,
 }
-
-impl RawLevel {
-    pub fn build(self, mut builder: crate::levels::LevelBuilder) -> crate::levels::Level {
-        builder.level_start(self.start_pos);
-
-        for graphic in &self.graphics {
-            match &graphic.shape {
-                Shape::Rect { pos, size } => {
-                    builder.rect_graphics(Rc::clone(&graphic.texture), *pos, *size);
-                }
-
-                Shape::Polygon(points) => {
-                    builder.polygon_graphics(Rc::clone(&graphic.texture), points);
-                }
-            }
-        }
-
-        for shape in &self.colliders {
-            match shape {
-                Shape::Rect { pos, size } => builder.rect(Option::<Rc<str>>::None, *pos, *size),
-                Shape::Polygon(points) => builder.polygon(Option::<Rc<str>>::None, points),
-            }
-        }
-
-        for trigger in &self.triggers {
-            match &trigger.shape {
-                Shape::Rect { pos, size } => {
-                    builder.rect_trigger(trigger.kind.clone(), *pos, *size);
-                }
-                Shape::Polygon(points) => builder.polygon_trigger(trigger.kind.clone(), points),
-            }
-        }
-
-        builder.build_or_die()
-    }
-}

@@ -31,29 +31,35 @@ use parry2d::{
     },
 };
 
-use crate::draw_utils::{
-    draw_textured_poly,
-    draw_textured_rect,
+use crate::{
+    draw_utils::{
+        draw_textured_poly,
+        draw_textured_rect,
+    },
+    raw_level::{
+        RawLevel,
+        Shape,
+    },
 };
 
 pub struct Level {
     start_pos: Vec2,
 
     collision_bvh: Bvh, // ids: rects first, then polys
-    rect_colliders: Vec<Rect>,
-    poly_colliders: Vec<ConvexPolygon>,
+    rect_colliders: Box<[Rect]>,
+    poly_colliders: Box<[ConvexPolygon]>,
 
     triggers_bvh: Bvh,
-    triggers: Vec<(TriggerKind, ConvexPolygon)>,
+    triggers: Box<[(TriggerKind, ConvexPolygon)]>,
 
     graphics_background_threshold: u32, // HACK
-    graphics: Vec<Graphic>,
+    graphics: Box<[Graphic]>,
     graphics_bvh: Bvh,
 }
 
 pub enum Graphic {
     Rect { pos: Vec2, wh: Vec2, texture: Texture2D },
-    Polygon { points: Vec<Vec2>, texture: Texture2D },
+    Polygon { points: Box<[Vec2]>, texture: Texture2D },
 }
 
 impl Graphic {
@@ -142,126 +148,121 @@ impl Level {
     }
 }
 
-pub struct LevelBuilder {
-    textures: HashMap<&'static str, Texture2D>,
-    rects: Vec<(Vec2, Vec2, Option<Rc<str>>)>,
-    polygons: Vec<(Vec<Vec2>, Option<Rc<str>>)>,
-    rects_graphics: Vec<(Vec2, Vec2, Rc<str>)>,
-    polygons_graphics: Vec<(Vec<Vec2>, Rc<str>)>,
+struct LevelBuilder {
+    rect_colliders: Vec<(usize, Vec2, Vec2)>,
+    poly_colliders: Vec<(usize, Vec<Vec2>)>,
+    rects_graphics: Vec<(usize, Vec2, Vec2, Texture2D)>,
+    polygons_graphics: Vec<(usize, Vec<Vec2>, Texture2D)>,
     triggers: Vec<(TriggerKind, ConvexPolygon)>,
     level_start: Vec2,
 }
 
-impl LevelBuilder {
-    pub fn new(textures: HashMap<&'static str, Texture2D>) -> LevelBuilder {
-        LevelBuilder {
-            textures,
-            rects: Vec::with_capacity(64),
-            polygons: Vec::with_capacity(64),
-            rects_graphics: Vec::with_capacity(32),
-            polygons_graphics: Vec::with_capacity(32),
-            level_start: Vec2::ZERO,
-            triggers: Vec::new(),
+#[derive(Clone, Debug, thiserror::Error)]
+pub enum LevelError {
+    #[error("Invalid shape in {0} (index {1}): {2:?}")]
+    InvalidShape(&'static str, usize, Vec<Vec2>),
+
+    #[error("Unknown texture referenced: {0}")]
+    UnknownTexture(String),
+}
+
+pub fn build_level(
+    raw: &RawLevel,
+    textures: &HashMap<&str, Texture2D>,
+) -> Result<Level, LevelError> {
+    let mut builder = LevelBuilder::new();
+    builder.level_start = raw.start_pos;
+
+    for (i, graphic) in raw.graphics.iter().enumerate() {
+        let tex = lookup_texture(textures, &graphic.texture)?;
+        match &graphic.shape {
+            Shape::Rect { pos, size } => builder.rects_graphics.push((i, *pos, *size, tex)),
+            Shape::Polygon(points) => builder.polygons_graphics.push((i, points.to_vec(), tex)),
         }
     }
 
-    fn lookup_texture_or_die(&self, name: &str) -> Texture2D {
-        self.textures
-            .get(name)
-            .unwrap_or_else(|| panic!("Unknown texture referenced: {name}"))
-            .clone()
+    for (i, shape) in raw.colliders.iter().enumerate() {
+        match shape {
+            Shape::Rect { pos, size } => {
+                builder.rect_colliders.push((i, *pos, *size));
+            }
+            Shape::Polygon(points) => {
+                builder.poly_colliders.push((i, points.to_vec()));
+            }
+        }
     }
 
-    pub fn polygon(&mut self, texture: Option<impl Into<Rc<str>>>, points: &[Vec2]) {
-        self.polygons.push((points.to_vec(), texture.map(Into::into)));
+    for (i, trigger) in raw.triggers.iter().enumerate() {
+        let points: &[Vec2] = match &trigger.shape {
+            Shape::Rect { pos, size } => {
+                &[*size, size.with_y(0.0), vec2(0.0, 0.0), size.with_x(0.0)].map(|p| p + *pos)
+            }
+            Shape::Polygon(points) => points,
+        };
+        let parry2d_points: Vec<_> = points.iter().copied().map(vec_to_parry).collect();
+        let poly = ConvexPolygon::from_convex_hull(&parry2d_points)
+            .ok_or_else(|| LevelError::InvalidShape("triggers", i, points.to_vec()))?;
+        builder.triggers.push((trigger.kind.clone(), poly));
     }
 
-    pub fn rect(&mut self, texture: Option<impl Into<Rc<str>>>, xy: Vec2, wh: Vec2) {
-        self.rects.push((xy, wh, texture.map(Into::into)));
+    builder.build()
+}
+
+fn lookup_texture<'a>(
+    textures: &'a HashMap<&'a str, Texture2D>,
+    name: &str,
+) -> Result<Texture2D, LevelError> {
+    textures.get(name).ok_or_else(|| LevelError::UnknownTexture(name.to_string())).cloned()
+}
+
+impl LevelBuilder {
+    pub fn new() -> LevelBuilder {
+        LevelBuilder {
+            rect_colliders: Vec::with_capacity(64),
+            poly_colliders: Vec::with_capacity(64),
+            rects_graphics: Vec::with_capacity(64),
+            polygons_graphics: Vec::with_capacity(64),
+            level_start: Vec2::ZERO,
+            triggers: Vec::with_capacity(64),
+        }
     }
 
-    pub fn rect_trigger(&mut self, action: TriggerKind, xy: Vec2, wh: Vec2) {
-        debug_assert!(wh.is_finite() && wh.x >= 0.0 && wh.y >= 0.0, "Invalid 'wh': {wh}");
-        let points = [xy + wh, xy + wh.with_y(0.0), xy, xy + wh.with_x(0.0)];
-        self.polygon_trigger(action, &points);
-    }
-
-    pub fn polygon_graphics(&mut self, texture: impl Into<Rc<str>>, points: &[Vec2]) {
-        self.polygons_graphics.push((points.to_vec(), texture.into()));
-    }
-
-    pub fn rect_graphics(&mut self, texture: impl Into<Rc<str>>, xy: Vec2, wh: Vec2) {
-        self.rects_graphics.push((xy, wh, texture.into()));
-    }
-
-    pub fn level_start(&mut self, point: Vec2) {
-        self.level_start = point;
-    }
-
-    pub fn build_or_die(self) -> Level {
+    pub fn build(self) -> Result<Level, LevelError> {
         let start_pos = self.level_start;
-        let mut graphics = Vec::with_capacity(
-            self.rects.len()
-                + self.polygons.len()
-                + self.rects_graphics.len()
-                + self.polygons_graphics.len(),
-        );
-        let mut rect_colliders = Vec::with_capacity(self.rects.len());
-        let mut poly_colliders = Vec::with_capacity(self.polygons.len());
+        let mut rect_colliders = Vec::with_capacity(self.rect_colliders.len());
+        let mut poly_colliders = Vec::with_capacity(self.poly_colliders.len());
         let mut collision_aabbs: Vec<Aabb> =
-            Vec::with_capacity(self.rects.len() + self.polygons.len());
-        let mut graphics_aabbs: Vec<Aabb> = Vec::with_capacity(graphics.capacity());
+            Vec::with_capacity(self.rect_colliders.len() + self.poly_colliders.len());
 
         let rect_aabb = |pos: Vec2, wh: Vec2| Aabb::new(vec_to_parry(pos), vec_to_parry(pos + wh));
 
-        for (pos, wh, tex_name) in &self.rects_graphics {
-            graphics.push(Graphic::Rect {
-                pos: *pos,
-                wh: *wh,
-                texture: self.lookup_texture_or_die(tex_name),
-            });
-            graphics_aabbs.push(rect_aabb(*pos, *wh));
+        let graphics_background_threshold =
+            (self.rects_graphics.len() + self.polygons_graphics.len()) as u32;
+        let mut graphics =
+            Vec::with_capacity(self.rects_graphics.len() + self.polygons_graphics.len());
+        let mut graphics_aabbs: Vec<Aabb> = Vec::with_capacity(graphics.capacity());
+
+        for (_i, pos, wh, texture) in self.rects_graphics {
+            graphics.push(Graphic::Rect { pos, wh, texture });
+            graphics_aabbs.push(rect_aabb(pos, wh));
         }
 
-        for (points, tex_name) in &self.polygons_graphics {
-            graphics.push(Graphic::Polygon {
-                points: points.clone(),
-                texture: self.lookup_texture_or_die(tex_name),
-            });
+        for (_i, points, texture) in self.polygons_graphics {
             graphics_aabbs.push(Aabb::from_points(points.iter().copied().map(vec_to_parry)));
+            graphics.push(Graphic::Polygon { points: points.into(), texture });
         }
 
-        for (pos, wh, tex_name) in &self.rects {
-            let aabb = rect_aabb(*pos, *wh);
-            if let Some(tex_name) = tex_name {
-                graphics.push(Graphic::Rect {
-                    pos: *pos,
-                    wh: *wh,
-                    texture: self.lookup_texture_or_die(tex_name),
-                });
-                graphics_aabbs.push(aabb);
-            }
+        for (_i, pos, wh) in &self.rect_colliders {
             rect_colliders.push(Rect { x: pos.x, y: pos.y, w: wh.x, h: wh.y });
-            collision_aabbs.push(aabb);
+            collision_aabbs.push(rect_aabb(*pos, *wh));
         }
 
-        for (points, tex_name) in &self.polygons {
-            let aabb = Aabb::from_points(points.iter().copied().map(vec_to_parry));
-
-            let points = points.clone();
+        for (i, points) in self.poly_colliders {
             let parry2d_points: Vec<_> = points.iter().copied().map(vec_to_parry).collect();
-
-            poly_colliders
-                .push(ConvexPolygon::from_convex_hull(&parry2d_points).expect("invalid polygon"));
-            collision_aabbs.push(aabb);
-
-            if let Some(tex_name) = tex_name {
-                graphics_aabbs.push(aabb);
-                graphics.push(Graphic::Polygon {
-                    points,
-                    texture: self.lookup_texture_or_die(tex_name),
-                });
-            }
+            let poly = ConvexPolygon::from_convex_hull(&parry2d_points)
+                .ok_or(LevelError::InvalidShape("triggers", i, points))?;
+            poly_colliders.push(poly);
+            collision_aabbs.push(Aabb::from_points(parry2d_points));
         }
         let graphics_bvh = Bvh::from_leaves(BvhBuildStrategy::Ploc, &graphics_aabbs);
         let collision_bvh = Bvh::from_leaves(BvhBuildStrategy::Ploc, &collision_aabbs);
@@ -271,26 +272,17 @@ impl LevelBuilder {
             Bvh::from_iter(BvhBuildStrategy::Ploc, aabbs.enumerate())
         };
 
-        Level {
-            rect_colliders,
-            poly_colliders,
-            collision_bvh,
+        Ok(Level {
             start_pos,
-            graphics,
+            rect_colliders: rect_colliders.into(),
+            poly_colliders: poly_colliders.into(),
+            collision_bvh,
+            graphics: graphics.into(),
             graphics_bvh,
-            graphics_background_threshold: (self.rects_graphics.len()
-                + self.polygons_graphics.len()) as u32,
-
+            graphics_background_threshold,
             triggers_bvh,
-            triggers: self.triggers,
-        }
-    }
-
-    pub fn polygon_trigger(&mut self, action: TriggerKind, points: &[Vec2]) {
-        let parry2d_points: Vec<_> = points.iter().copied().map(vec_to_parry).collect();
-        let poly = ConvexPolygon::from_convex_hull(&parry2d_points)
-            .unwrap_or_else(|| panic!("Invalid polygon provided: {points:?}"));
-        self.triggers.push((action, poly));
+            triggers: self.triggers.into(),
+        })
     }
 }
 

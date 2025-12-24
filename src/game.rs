@@ -14,6 +14,7 @@ use parry2d::shape::ConvexPolygon;
 use crate::{
     compat::performance_timer,
     input::InputDevice,
+    level_parsing,
     levels,
 };
 
@@ -63,17 +64,15 @@ pub async fn run_game(
     level_source: LevelSource,
     skip_until_update: u64,
 ) {
-    let builder = levels::LevelBuilder::new(load_textures());
-    let raw_level = match level_source {
-        LevelSource::Default => {
-            crate::level_parsing::parse(include_bytes!("../levels/default.bin")).unwrap()
-        }
-
-        LevelSource::New => {
-            crate::level_parsing::parse(include_bytes!("../levels/new.bin")).unwrap()
-        }
+    let level_src: &[u8] = match level_source {
+        LevelSource::Default => include_bytes!("../levels/default.bin"),
+        LevelSource::New => include_bytes!("../levels/new.bin"),
     };
-    let level = raw_level.build(builder);
+
+    let textures = load_textures();
+    let raw_level = level_parsing::parse(level_src).expect("bundled level is corrupted");
+    let level = levels::build_level(&raw_level, &textures).expect("bundled level is invalid");
+
     let mut state = GameState::new(level);
 
     macroquad::logging::info!("Initialized penguin-game state!");
@@ -219,7 +218,7 @@ impl Tooltip {
 
 struct GameState {
     penguin: Penguin,
-    level: crate::levels::Level,
+    level: levels::Level,
     rockets: Vec<Rocket>,
     explosions: Vec<Explosion>,
     debug_strings: Vec<String>,
@@ -349,6 +348,7 @@ mod updates {
             Input,
             InputDevice,
         },
+        levels,
     };
     use arrayvec::ArrayVec;
     use core::f32::consts::PI;
@@ -592,15 +592,15 @@ mod updates {
 
         for (kind, poly) in triggers {
             match kind {
-                crate::levels::TriggerKind::Panic => {
+                levels::TriggerKind::Panic => {
                     panic!(
                         "You have entered a Panic trigger. This is not a bug. Game state: {state:#?}"
                     )
                 }
-                crate::levels::TriggerKind::Hello => {
+                levels::TriggerKind::Hello => {
                     state.debug_strings.push(format!("Hello from {poly:?}"));
                 }
-                crate::levels::TriggerKind::ShowText(text) => {
+                levels::TriggerKind::ShowText(text) => {
                     let center_x = parry2d::utils::center(poly.points()).x;
                     let min_y = poly.points().iter().map(|p| p.y).min_by(f32::total_cmp).unwrap();
 
@@ -609,10 +609,10 @@ mod updates {
                     state.tooltip.ttl =
                         (state.tooltip.ttl + TOOLTIP_TTL_GROW_RATE).min(TOOLTIP_TTL_MAX);
                 }
-                crate::levels::TriggerKind::SetEyepatch(yes) => {
+                levels::TriggerKind::SetEyepatch(yes) => {
                     state.penguin.has_eyepatch = yes;
                 }
-                crate::levels::TriggerKind::Goto(new_pos, status_icon) => {
+                levels::TriggerKind::Goto(new_pos, status_icon) => {
                     state.penguin.pos = new_pos;
                     state.penguin.vel = vec2(0.0, 0.0);
                     state.penguin.status = status_icon;
