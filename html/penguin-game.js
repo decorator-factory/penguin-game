@@ -23,6 +23,10 @@ export async function init({
   mq.set_canvas(canvasElement);
 
   mq.define_ffi_function("penguin_read_options", ffiReadOptions);
+  mq.define_ffi_function("penguin_monotonic_millis", function () {
+    return performance.now()
+  })
+
   mq.set_demangler(demangleMultilineString);
   mq.add_panic_handler((message, backtrace) => {
     backtraceElement.innerText = message + "\n--------\n" + backtrace;

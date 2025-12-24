@@ -12,6 +12,7 @@ use miniquad::TextureWrap;
 use parry2d::shape::ConvexPolygon;
 
 use crate::{
+    compat::performance_timer,
     input::InputDevice,
     levels,
 };
@@ -97,7 +98,7 @@ pub async fn run_game(
         updates::fixed_update(&mut state, device);
     }
 
-    let mut last_time = get_time();
+    let mut last_time = performance_timer();
     // Handling the quit event manually allows us to save the demo recording
     prevent_quit();
     while !is_quit_requested() {
@@ -110,7 +111,7 @@ pub async fn run_game(
         let inverse_ups = INVERSE_UPS[ups_index];
 
         // Update debt logic
-        let now = get_time();
+        let now = performance_timer();
         time_bank += now - last_time;
         last_time = now;
         if time_bank >= 0.5 && ups > 2.0 {
@@ -287,9 +288,9 @@ impl Stats {
             return;
         }
 
-        let start = get_time();
+        let start = performance_timer();
         f();
-        let delta = (get_time() - start) / f64::from(times);
+        let delta = (performance_timer() - start) / f64::from(times);
         let subtract = self.update_buffer.pop_back().unwrap();
         self.update_total -= subtract;
         self.update_total += delta;
@@ -298,9 +299,9 @@ impl Stats {
     }
 
     fn measure_graphics(&mut self, f: impl FnOnce()) {
-        let start = get_time();
+        let start = performance_timer();
         f();
-        let delta = get_time() - start;
+        let delta = performance_timer() - start;
 
         let subtract = self.graphics_buffer.pop_back().unwrap();
         self.graphics_total -= subtract;

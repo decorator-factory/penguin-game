@@ -12,6 +12,7 @@ use std::{
 
 use macroquad::prelude::*;
 
+mod compat;
 mod demo;
 mod draw_utils;
 mod game;

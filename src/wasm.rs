@@ -11,6 +11,8 @@ unsafe extern "C" {
     pub unsafe fn penguin_set_panic_message(begin: *const u8);
 
     unsafe fn penguin_read_options(begin: *mut u8, max_length: usize) -> usize;
+
+    pub safe fn penguin_monotonic_millis() -> f64;
 }
 
 pub fn read_options() -> HashMap<String, String> {
