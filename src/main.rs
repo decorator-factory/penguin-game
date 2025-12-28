@@ -11,6 +11,7 @@ use std::{
 };
 
 use macroquad::prelude::*;
+use miniquad::conf::{Platform, WebGLVersion};
 
 mod compat;
 mod demo;
@@ -31,7 +32,6 @@ fn main() {
         window_width: 1280,
         window_height: 720,
         window_resizable: true,
-        sample_count: 4,
         high_dpi: true,
         icon: None, // the icon takes up 22K in the binary (even on wasm where it has no effect)
         ..Default::default()

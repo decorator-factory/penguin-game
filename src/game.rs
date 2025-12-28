@@ -754,7 +754,7 @@ mod graphics {
 
         let rect = Rect::new(viewport_offset.x, viewport_offset.y, screen_size.x, screen_size.y);
         state.level.macroquad_draw(rect);
-        draw_tooltip(&state.tooltip, &state.penguin);
+        draw_tooltip(viewport_offset, &state.tooltip, &state.penguin);
 
         draw_penguin(&state.penguin, Vec2::from_angle(look_angle), !state.rockets.is_empty());
         for &rocket in &state.rockets {
@@ -767,7 +767,7 @@ mod graphics {
         pop_camera_state();
     }
 
-    fn draw_tooltip(tooltip: &Tooltip, penguin: &Penguin) {
+    fn draw_tooltip(offset: Vec2, tooltip: &Tooltip, penguin: &Penguin) {
         const FONT_SIZE: u16 = 32;
         let text = tooltip.text();
 
@@ -776,7 +776,7 @@ mod graphics {
         }
         let alpha = (f32::from(tooltip.ttl) / f32::from(TOOLTIP_TTL_FADE_BEGIN)).clamp(0.0, 1.0);
 
-        let default_anchor = tooltip.origin - vec2(0.0, 4.0);
+        let default_anchor = tooltip.origin.round() - vec2(0.0, 4.0);
 
         // `measure_text` doesn't handle multiline text. Argh!
         let text_dims = measure_multiline_text(text, FONT_SIZE);
@@ -810,10 +810,14 @@ mod graphics {
         }
 
         draw_rounded_rect(top_left, dimensions, 6.0, WHITE.with_alpha(alpha));
+
+        // needed to ensure that the text is rendered at an integral pixel boundary
+        let fraction = offset.fract_gl();
+
         draw_multiline_text(
             text,
-            top_left.x + padding.x,
-            top_left.y + padding.y + text_dims.offset_y,
+            top_left.x + padding.x - fraction.x,
+            top_left.y + padding.y + text_dims.offset_y - fraction.y,
             f32::from(FONT_SIZE),
             None,
             BLACK.with_alpha(alpha),
@@ -822,7 +826,6 @@ mod graphics {
 
     fn viewport_offset_to_camera(offset: Vec2, screen_size: Vec2) -> Camera2D {
         let [w, h] = screen_size.to_array();
-        let offset = offset.round();
 
         // I don't understand why, but `from_display_rect` flips the height portion by
         // default, or something like that
@@ -866,7 +869,7 @@ mod graphics {
         }
 
         let Penguin { pos, vel, fuel, has_eyepatch, status, status_ttl, .. } = penguin;
-        let (cx, cy) = (pos.x.round(), pos.y.round());
+        let (cx, cy) = (pos.x, pos.y);
 
         // Draw trail when moving at high speed
         if vel.length() > 1.8 {
