@@ -11,7 +11,6 @@ use std::{
 };
 
 use macroquad::prelude::*;
-use miniquad::conf::{Platform, WebGLVersion};
 
 mod compat;
 mod demo;
