@@ -43,7 +43,7 @@ def _extract_property(obj: dict[str, Any], name: str, expected_type: str, requir
             if prop.get("type") != expected_type:
                 raise Exception(
                     f"Property {name!r} in object with id={obj['id']} "
-                    "must be of type {expected_type!r}")
+                    f"must be of type {expected_type!r}")
             return prop.get("value")
 
     if required:
@@ -224,7 +224,7 @@ class Serializer:
         self._triggers.append(shape + trigger)
 
 
-def render_rect_shape(x: float, y: float, w: float, h: float, *, deg: float, ser: Serializer) -> bytes:
+def render_rect_shape(x: float, y: float, w: float, h: float, *, deg: float, ser: Serializer, obj_id: object) -> bytes:
     if deg == 0:
         bs = struct.pack(b"<ffff", x, y, w, h)
         assert bs[:4] != b"\xff\xff\xff\xff"
@@ -241,14 +241,17 @@ def render_rect_shape(x: float, y: float, w: float, h: float, *, deg: float, ser
             assert deg == 270
             y -= w
             w, h = h, w
-        return render_rect_shape(x, y, w, h, deg=0.0, ser=ser)
+        return render_rect_shape(x, y, w, h, deg=0.0, ser=ser, obj_id=obj_id)
     else:
         poly: Poly = tuple((w*u, h*v) for (u, v) in [(0, 0), (1, 0), (1, 1), (0,1)])
         poly = rotate_polygon(poly, radians(deg), x, y)
-        return render_polygon_shape(poly, ser)
+        return render_polygon_shape(obj_id, poly, ser)
 
 
-def render_polygon_shape(points: Poly, ser: Serializer) -> bytes:
+def render_polygon_shape(obj_id: object, points: Poly, ser: Serializer) -> bytes:
+    # Remove overlapping points. Tiled doesn't warn you about this at all, so it would be annoying to error here
+    points = tuple(dict.fromkeys(points))
+
     string_id = ser.cache_polygon(points)
     return b"\xff\xff\xff\xff" + string_id.to_bytes(2, "little") + b"\x00"*10
 
@@ -257,10 +260,10 @@ def render_obj_shape(obj: dict[str, Any], ser: Serializer) -> bytes:
     match obj:
         case {"polygon": polygon, "x": x, "y": y, "rotation": deg}:
             points = rotate_raw_polygon(polygon, radians(deg), x, y)
-            return render_polygon_shape(points, ser)
+            return render_polygon_shape(obj["id"], points, ser)
 
         case {"x": x, "y": y, "width": w, "height": h, "rotation": deg}:
-            return render_rect_shape(x, y, w, h, deg=deg, ser=ser)
+            return render_rect_shape(x, y, w, h, deg=deg, ser=ser, obj_id=obj["id"])
 
         case _:
             raise Exception(f"Unknown object type with ID {obj.get('id')}")

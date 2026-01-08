@@ -1,6 +1,5 @@
 use macroquad::prelude::*;
 use miniquad::TextureWrap;
-use parry2d::shape::ConvexPolygon;
 use std::{
     collections::{
         HashMap,
@@ -88,7 +87,8 @@ pub async fn run_game(
     let level_src = load_bundled_level(&level_source);
     let raw_level = level_parsing::parse(level_src).expect("bundled level is corrupted");
 
-    let level = levels::build_level(raw_level, &textures).expect("bundled level is invalid");
+    let level = levels::build_level(raw_level, &textures)
+        .unwrap_or_else(|e| panic!("bundled level {level_source:?} is invalid: {e}"));
     let mut state = GameState::new(level);
 
     loop {
@@ -381,7 +381,6 @@ impl core::fmt::Display for Stats {
 
 mod updates {
     use super::{
-        ConvexPolygon,
         Explosion,
         GameState,
         PENGUIN_RADIUS,
@@ -414,6 +413,7 @@ mod updates {
         Circle,
         Rect,
     };
+    use parry2d::shape::TriMesh;
 
     const ROCKET_SPEED: f32 = 2.7;
     pub(super) const ROCKET_TTL: u16 = 200;
@@ -655,8 +655,8 @@ mod updates {
                     state.debug_strings.push(format!("Hello from {poly:?}"));
                 }
                 levels::TriggerKind::ShowText(text) => {
-                    let center_x = parry2d::utils::center(poly.points()).x;
-                    let min_y = poly.points().iter().map(|p| p.y).min_by(f32::total_cmp).unwrap();
+                    let center_x = parry2d::utils::center(poly.vertices()).x;
+                    let min_y = poly.vertices().iter().map(|p| p.y).min_by(f32::total_cmp).unwrap();
 
                     state.tooltip.text = Some(text);
                     state.tooltip.origin = vec2(center_x, min_y);
@@ -677,7 +677,7 @@ mod updates {
     }
 
     /// If an intersection occurs, return how much to move the circle
-    fn circle_impacts_convex(circle: Circle, poly: &ConvexPolygon) -> Option<Vec2> {
+    fn circle_impacts_convex(circle: Circle, poly: &TriMesh) -> Option<Vec2> {
         let contact = circle_impacts_convex_alt(circle, poly)?;
         let delta = contact.point1 - contact.point2;
         let rv = vec2(delta.x, delta.y);
@@ -687,7 +687,7 @@ mod updates {
     /// Circle is the "second object"
     fn circle_impacts_convex_alt(
         circle: Circle,
-        poly: &ConvexPolygon,
+        poly: &TriMesh,
     ) -> Option<parry2d::query::Contact> {
         use nalgebra::Isometry2;
         use parry2d::query;

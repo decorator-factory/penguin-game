@@ -27,7 +27,7 @@ use parry2d::{
     query::details::intersection_test_ball_point_query,
     shape::{
         Ball,
-        ConvexPolygon,
+        TriMesh,
     },
 };
 
@@ -48,10 +48,10 @@ pub struct Level {
 
     collision_bvh: Bvh, // ids: rects first, then polys
     rect_colliders: Box<[Rect]>,
-    poly_colliders: Box<[ConvexPolygon]>,
+    poly_colliders: Box<[TriMesh]>,
 
     triggers_bvh: Bvh,
-    triggers: Box<[(TriggerKind, ConvexPolygon)]>,
+    triggers: Box<[(TriggerKind, TriMesh)]>,
 
     // TODO: specify draw order
     graphics: Box<[Graphic]>,
@@ -101,11 +101,11 @@ impl Level {
         }
     }
 
-    pub fn triggers_at(&self, circle: Circle) -> Vec<(TriggerKind, &ConvexPolygon)> {
+    pub fn triggers_at(&self, circle: Circle) -> Vec<(TriggerKind, &TriMesh)> {
         let mut rv = Vec::new();
         let start = circle.point() - vec2(circle.r, circle.r);
         let end = circle.point() + vec2(circle.r, circle.r);
-        let aabb = Aabb::new(vec_to_parry(start), vec_to_parry(end));
+        let aabb = Aabb::new(to_nalgebra(start), to_nalgebra(end));
 
         let ball = Ball::new(circle.radius());
         let ball_pos_inv = Isometry2::translation(-circle.x, -circle.y);
@@ -118,7 +118,7 @@ impl Level {
         rv
     }
 
-    pub fn collision_candidates_at(&self, rect: Rect) -> (Vec<Rect>, Vec<&ConvexPolygon>) {
+    pub fn collision_candidates_at(&self, rect: Rect) -> (Vec<Rect>, Vec<&TriMesh>) {
         let aabb = rect_aabb(rect);
         let mut rects = Vec::new();
         let mut polys = Vec::new();
@@ -155,7 +155,7 @@ pub fn build_level(
 ) -> Result<Level, LevelError> {
     let mut graphics = Vec::with_capacity(raw.graphics.len());
     let mut graphics_aabbs: Vec<Aabb> = Vec::with_capacity(raw.graphics.len());
-    for graphic in raw.graphics {
+    for (i, graphic) in raw.graphics.into_iter().enumerate() {
         let texture = lookup_texture(textures, &graphic.texture)?;
         match graphic.shape {
             Shape::Rect { pos, size } => {
@@ -163,8 +163,17 @@ pub fn build_level(
                 graphics_aabbs.push(poswh_aabb(pos, size));
             }
             Shape::Polygon(points) => {
-                graphics_aabbs.push(Aabb::from_points(points.iter().copied().map(vec_to_parry)));
-                graphics.push(Graphic::Polygon { points, opts: texture.into() });
+                // TODO: only decompose each polygon once, for graphics, triggers, collision
+                let polys = decompose_concave(&points).ok_or_else(|| {
+                    LevelError::InvalidShape("graphics", i, points.to_vec().into())
+                })?;
+                for poly in polys {
+                    graphics.push(Graphic::Polygon {
+                        points: poly.iter().copied().map(from_nalgebra).collect(),
+                        opts: texture.clone().into(),
+                    });
+                    graphics_aabbs.push(Aabb::from_points(poly));
+                }
             }
         }
     }
@@ -181,11 +190,12 @@ pub fn build_level(
                 rect_collider_aabbs.push(poswh_aabb(*pos, *size));
             }
             Shape::Polygon(points) => {
-                let parry2d_points: Vec<_> = points.iter().copied().map(vec_to_parry).collect();
-                let poly = ConvexPolygon::from_convex_hull(&parry2d_points)
-                    .ok_or(LevelError::InvalidShape("triggers", i, points.to_vec().into()))?;
+                let parry2d_points: Vec<_> = points.iter().copied().map(to_nalgebra).collect();
+                poly_collider_aabbs.push(Aabb::from_points(parry2d_points.iter().copied()));
+                let poly = try_mesh_both_ways(parry2d_points).ok_or_else(|| {
+                    LevelError::InvalidShape("colliders", i, points.to_vec().into())
+                })?;
                 poly_colliders.push(poly);
-                poly_collider_aabbs.push(Aabb::from_points(parry2d_points));
             }
         }
     }
@@ -194,15 +204,15 @@ pub fn build_level(
         .triggers
         .into_iter()
         .enumerate()
-        .map(|(i, trigger)| -> Result<(TriggerKind, ConvexPolygon), LevelError> {
+        .map(|(i, trigger)| -> Result<(TriggerKind, TriMesh), LevelError> {
             let points: &[Vec2] = match &trigger.shape {
                 Shape::Rect { pos, size } => {
                     &[*size, size.with_y(0.0), vec2(0.0, 0.0), size.with_x(0.0)].map(|p| p + *pos)
                 }
                 Shape::Polygon(points) => points,
             };
-            let parry2d_points: Vec<_> = points.iter().copied().map(vec_to_parry).collect();
-            match ConvexPolygon::from_convex_hull(&parry2d_points) {
+            let parry2d_points: Vec<_> = points.iter().copied().map(to_nalgebra).collect();
+            match try_mesh_both_ways(parry2d_points) {
                 Some(poly) => Ok((trigger.kind.clone(), poly)),
                 None => Err(LevelError::InvalidShape("triggers", i, points.into())),
             }
@@ -232,6 +242,23 @@ pub fn build_level(
     })
 }
 
+fn decompose_concave(points: &[Vec2]) -> Option<Vec<Vec<Point2<f32>>>> {
+    let points: Vec<_> = points.iter().copied().map(to_nalgebra).collect();
+    let trimesh = try_mesh_both_ways(points)?;
+    Some(parry2d::transformation::hertel_mehlhorn(trimesh.vertices(), trimesh.indices()))
+}
+
+/// Try creating a `TriMesh` from either counter-clockwise or clockwise vertices.
+fn try_mesh_both_ways(points: Vec<Point2<f32>>) -> Option<TriMesh> {
+    let mut copy = points.clone();
+    if let Some(mesh) = TriMesh::from_polygon(points) {
+        Some(mesh)
+    } else {
+        copy.reverse();
+        TriMesh::from_polygon(copy)
+    }
+}
+
 fn lookup_texture<'a>(
     textures: &'a HashMap<&'a str, Texture2D>,
     name: &str,
@@ -239,14 +266,22 @@ fn lookup_texture<'a>(
     textures.get(name).ok_or_else(|| LevelError::UnknownTexture(name.to_string())).cloned()
 }
 
-fn vec_to_parry(v: Vec2) -> Point2<f32> {
+#[inline(always)]
+fn to_nalgebra(v: Vec2) -> Point2<f32> {
     Point2::new(v.x, v.y)
 }
 
+#[inline(always)]
+fn from_nalgebra(v: Point2<f32>) -> Vec2 {
+    Vec2::new(v.x, v.y)
+}
+
+#[inline(always)]
 fn rect_aabb(rect: Rect) -> Aabb {
     Aabb::new(Point2::new(rect.x, rect.y), Point2::new(rect.right(), rect.bottom()))
 }
 
+#[inline(always)]
 fn poswh_aabb(pos: Vec2, wh: Vec2) -> Aabb {
-    Aabb::new(vec_to_parry(pos), vec_to_parry(pos + wh))
+    Aabb::new(to_nalgebra(pos), to_nalgebra(pos + wh))
 }

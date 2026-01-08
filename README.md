@@ -76,6 +76,15 @@ rjp \
 
 - Sounds
 
+- Migrate from `macroquad`. I might contribute some updates to macroquad, but a new version hasn't been released since March 2025, and
+    it's using a version of `glam` incompatible with the one that the latest `parry2d` needs... I am not smart enough to maintain a fork
+    of a game library, so I should probably look into something else.
+
+    I avoided `bevy` because it brings in a lot of dependencies. `kiss3d` requires WebGPU which is not there yet.
+    Using `wgpu` directly seems very tedious, maybe the recommended tutorial shows too much code or something, idk.
+    If I run into more issues, raw pengunining `wgpu` seems like the way.
+
+
 ## Development
 
 You need Rust 1.90.0 or later and Cargo.
